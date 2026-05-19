@@ -1,0 +1,176 @@
+﻿from contextlib import contextmanager
+from datetime import datetime
+
+import pymysql
+from pymysql.cursors import DictCursor
+
+import app.config as config
+
+
+def utc_now() -> str:
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+def _base_connect(db: str | None = None):
+    return pymysql.connect(
+        host=config.settings.mysql_host,
+        port=config.settings.mysql_port,
+        user=config.settings.mysql_user,
+        password=config.settings.mysql_password,
+        database=db,
+        charset=config.settings.mysql_charset,
+        cursorclass=DictCursor,
+        autocommit=False,
+    )
+
+
+@contextmanager
+def get_conn():
+    conn = _base_connect(config.settings.mysql_database)
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def init_db() -> None:
+    bootstrap = _base_connect(None)
+    try:
+        with bootstrap.cursor() as c:
+            c.execute(
+                f"CREATE DATABASE IF NOT EXISTS `{config.settings.mysql_database}` CHARACTER SET {config.settings.mysql_charset}"
+            )
+        bootstrap.commit()
+    finally:
+        bootstrap.close()
+
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS projects (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                created_at VARCHAR(32) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chapters (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                content MEDIUMTEXT NOT NULL,
+                version INT NOT NULL DEFAULT 1,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_chapters_project_title(project_id, title)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS lore_items (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                item_type VARCHAR(64) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                content TEXT NOT NULL,
+                tags TEXT,
+                created_at VARCHAR(32) NOT NULL,
+                INDEX idx_lore_project_type(project_id, item_type)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS character_cards (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                profile TEXT NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                INDEX idx_char_project(project_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS style_profiles (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                name VARCHAR(128) NOT NULL,
+                metrics_json TEXT NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_style_project(project_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS consistency_issues (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                chapter_id INT NULL,
+                issue_type VARCHAR(64) NOT NULL,
+                severity VARCHAR(32) NOT NULL,
+                message TEXT NOT NULL,
+                suggestion TEXT NOT NULL,
+                meta_json TEXT,
+                created_at VARCHAR(32) NOT NULL,
+                INDEX idx_issue_project(project_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS patch_sets (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                chapter_id INT NULL,
+                task_type VARCHAR(32) NOT NULL,
+                source_text MEDIUMTEXT NOT NULL,
+                result_text MEDIUMTEXT NOT NULL,
+                patch_json MEDIUMTEXT NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                INDEX idx_patch_project(project_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS model_run_logs (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                chapter_id INT NULL,
+                task_type VARCHAR(32) NOT NULL,
+                model_role VARCHAR(32) NOT NULL,
+                model_name VARCHAR(64) NOT NULL,
+                prompt_tokens INT NOT NULL DEFAULT 0,
+                completion_tokens INT NOT NULL DEFAULT 0,
+                latency_ms INT NOT NULL DEFAULT 0,
+                cost_estimate DECIMAL(12,6) NOT NULL DEFAULT 0,
+                status VARCHAR(32) NOT NULL,
+                meta_json TEXT,
+                created_at VARCHAR(32) NOT NULL,
+                INDEX idx_model_log_project(project_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS timeline_events (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                event_time VARCHAR(32) NOT NULL,
+                label VARCHAR(255) NOT NULL,
+                description TEXT NOT NULL,
+                source VARCHAR(64) NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                INDEX idx_timeline_project(project_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )

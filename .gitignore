@@ -1,0 +1,84 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ---------- 虚拟环境 ----------
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ---------- 测试 / 覆盖率 ----------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# ---------- 类型检查 / Lint ----------
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
+# ---------- 环境变量与密钥 ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---------- 数据库与本地数据 ----------
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# ---------- 日志 ----------
+*.log
+logs/
+
+# ---------- IDE / 编辑器 ----------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ---------- Windows ----------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---------- Jupyter ----------
+.ipynb_checkpoints/
+
+# ---------- 项目本地产物 ----------
+# 如有需要，可在此处添加项目特定的输出目录

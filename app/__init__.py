@@ -1,0 +1,2 @@
+﻿"""Novel Hub application package."""
+
