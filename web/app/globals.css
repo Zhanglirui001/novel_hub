@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * 现代杂志风主题 tokens。
+ * 亮：近纯白底 + 墨黑字 + 靛蓝 accent；暗：深石板底 + 同 accent。
+ * severity 语义色：destructive(高) / warning(中) / muted(低)。
+ */
+@layer base {
+  :root {
+    --background: 240 20% 99%; /* #FCFCFD 近纯白 */
+    --foreground: 240 10% 9%; /* 墨黑 */
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 9%;
+
+    --primary: 243 75% 59%; /* 靛蓝 accent */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 10% 12%;
+
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+
+    --accent: 243 75% 96%;
+    --accent-foreground: 243 75% 40%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 30 50% 12%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 243 75% 59%;
+
+    --radius: 0.6rem;
+  }
+
+  .dark {
+    --background: 240 10% 8%; /* 深石板 */
+    --foreground: 240 10% 95%;
+
+    --card: 240 9% 11%;
+    --card-foreground: 240 10% 95%;
+
+    --popover: 240 9% 11%;
+    --popover-foreground: 240 10% 95%;
+
+    --primary: 243 80% 68%; /* 暗色下提亮的靛蓝 */
+    --primary-foreground: 240 10% 8%;
+
+    --secondary: 240 6% 16%;
+    --secondary-foreground: 240 10% 95%;
+
+    --muted: 240 6% 16%;
+    --muted-foreground: 240 5% 60%;
+
+    --accent: 243 40% 22%;
+    --accent-foreground: 243 80% 85%;
+
+    --destructive: 0 63% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 92% 55%;
+    --warning-foreground: 30 50% 10%;
+
+    --success: 142 60% 48%;
+    --success-foreground: 0 0% 100%;
+
+    --border: 240 6% 20%;
+    --input: 240 6% 22%;
+    --ring: 243 80% 68%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* 杂志感工具类 */
+@layer components {
+  .prose-editor {
+    @apply font-serif text-[1.075rem] leading-[1.95] text-foreground/90;
+    letter-spacing: 0.01em;
+  }
+  .display-title {
+    @apply font-serif font-semibold tracking-tight;
+  }
+  /* 自定义滚动条，保持克制 */
+  .soft-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+}
