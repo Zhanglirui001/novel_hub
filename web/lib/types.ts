@@ -130,3 +130,31 @@ export interface TimelineEvent {
   description?: string;
   event_time: string;
 }
+
+export type LlmProvider = "qwen" | "openai-compatible" | "stub";
+
+export interface LlmSettings {
+  provider: LlmProvider;
+  base_url: string;
+  api_key_masked: string;
+  api_key_set: boolean;
+  writer_model: string;
+  planner_model: string;
+  judge_model: string;
+  updated_at: string;
+}
+
+export interface LlmSettingsPayload {
+  provider: LlmProvider;
+  base_url: string;
+  api_key: string;
+  writer_model: string;
+  planner_model: string;
+  judge_model: string;
+}
+
+export interface LlmTestResult {
+  ok: boolean;
+  provider: string;
+  message: string;
+}

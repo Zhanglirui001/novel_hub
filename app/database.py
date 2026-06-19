@@ -174,3 +174,17 @@ def init_db() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS model_settings (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                provider VARCHAR(32) NOT NULL,
+                base_url VARCHAR(512) NOT NULL DEFAULT '',
+                api_key VARCHAR(512) NOT NULL DEFAULT '',
+                writer_model VARCHAR(128) NOT NULL DEFAULT '',
+                planner_model VARCHAR(128) NOT NULL DEFAULT '',
+                judge_model VARCHAR(128) NOT NULL DEFAULT '',
+                updated_at VARCHAR(32) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )

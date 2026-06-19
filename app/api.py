@@ -7,12 +7,14 @@ from app.database import get_conn, init_db, utc_now
 from app.schemas import (
     ConsistencyPayload,
     DraftPayload,
+    LlmSettingsPayload,
     LoreImportPayload,
     PatchApplyPayload,
     ProjectCreate,
     StyleProfilePayload,
 )
 from app.services import ConsistencyGuard, GenerationService, LoreService, StyleService
+from app.services import settings_service
 
 init_db()
 app = FastAPI(title="Novel Hub API", version="0.1.0")
@@ -164,3 +166,21 @@ def apply_patch(payload: PatchApplyPayload):
 @app.get("/timeline")
 def timeline(project_id: int):
     return lore_service.list_timeline(project_id)
+
+
+@app.get("/settings/llm")
+def get_llm_settings():
+    return settings_service.get_settings_public()
+
+
+@app.put("/settings/llm")
+def update_llm_settings(payload: LlmSettingsPayload):
+    try:
+        return settings_service.save_settings(payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/settings/llm/test")
+def test_llm_settings(payload: LlmSettingsPayload):
+    return settings_service.test_connection(payload.model_dump())

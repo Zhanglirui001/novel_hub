@@ -1,6 +1,10 @@
+import Link from "next/link";
+import { Settings } from "lucide-react";
+
 import { CreateProjectDialog } from "@/components/dashboard/create-project-dialog";
 import { ProjectGallery } from "@/components/dashboard/project-gallery";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
   return (
@@ -19,6 +23,11 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" size="icon" aria-label="模型配置">
+              <Link href="/settings">
+                <Settings className="h-4 w-4" />
+              </Link>
+            </Button>
             <ThemeToggle />
             <CreateProjectDialog />
           </div>

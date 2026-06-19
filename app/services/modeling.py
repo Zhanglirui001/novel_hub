@@ -109,9 +109,32 @@ class QwenModelClient:
 
 
 def build_model_client():
+    db_settings = _load_db_settings()
+    if db_settings and db_settings["provider"] != "stub" and db_settings["api_key"]:
+        base_url = db_settings["base_url"] or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        return QwenModelClient(api_key=db_settings["api_key"], base_url=base_url)
+    if db_settings and db_settings["provider"] == "stub":
+        return HeuristicModelClient()
+
     api_key = os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
     if not api_key:
         return HeuristicModelClient()
     base_url = os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     return QwenModelClient(api_key=api_key, base_url=base_url)
+
+
+def _load_db_settings() -> dict | None:
+    # 延迟导入避免与 settings_service 形成 import 环。
+    try:
+        from app.services.settings_service import get_settings_raw
+    except Exception:
+        return None
+    try:
+        raw = get_settings_raw()
+    except Exception:
+        # DB 未就绪或表缺失时安静回落到 env 路径。
+        return None
+    if not raw.get("provider"):
+        return None
+    return raw
 

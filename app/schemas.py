@@ -44,3 +44,13 @@ class ConsistencyPayload(BaseModel):
     project_id: int
     text: str
 
+
+class LlmSettingsPayload(BaseModel):
+    provider: str = "stub"
+    base_url: str = ""
+    # api_key 留空表示保留 DB 中已存在的密钥（前端不回显原文）。
+    api_key: str = ""
+    writer_model: str = ""
+    planner_model: str = ""
+    judge_model: str = ""
+

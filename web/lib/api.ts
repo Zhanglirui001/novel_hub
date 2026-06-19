@@ -4,6 +4,9 @@ import type {
   ConsistencyResult,
   DraftRequest,
   GenerationResult,
+  LlmSettings,
+  LlmSettingsPayload,
+  LlmTestResult,
   LoreContext,
   LoreImportRequest,
   LoreImportResponse,
@@ -115,5 +118,23 @@ export const api = {
 
   listTimeline(projectId: number) {
     return request<TimelineEvent[]>(`/timeline?project_id=${projectId}`);
+  },
+
+  getLlmSettings() {
+    return request<LlmSettings>("/settings/llm");
+  },
+
+  updateLlmSettings(payload: LlmSettingsPayload) {
+    return request<LlmSettings>("/settings/llm", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  testLlmSettings(payload: LlmSettingsPayload) {
+    return request<LlmTestResult>("/settings/llm/test", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 };

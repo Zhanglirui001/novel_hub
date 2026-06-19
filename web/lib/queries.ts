@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./api";
-import type { DraftRequest, LoreImportRequest, StyleProfileRequest, TaskType } from "./types";
+import type {
+  DraftRequest,
+  LlmSettingsPayload,
+  LoreImportRequest,
+  StyleProfileRequest,
+  TaskType,
+} from "./types";
 
 export function useProjects() {
   return useQuery({
@@ -116,5 +122,28 @@ export function useTimeline(projectId: number) {
     queryKey: ["timeline", projectId],
     queryFn: () => api.listTimeline(projectId),
     enabled: Number.isFinite(projectId),
+  });
+}
+
+export function useLlmSettings() {
+  return useQuery({
+    queryKey: ["llm-settings"],
+    queryFn: api.getLlmSettings,
+  });
+}
+
+export function useUpdateLlmSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: LlmSettingsPayload) => api.updateLlmSettings(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["llm-settings"] });
+    },
+  });
+}
+
+export function useTestLlmSettings() {
+  return useMutation({
+    mutationFn: (payload: LlmSettingsPayload) => api.testLlmSettings(payload),
   });
 }

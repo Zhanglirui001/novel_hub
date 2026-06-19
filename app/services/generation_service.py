@@ -18,7 +18,11 @@ class GenerationService:
         self.guard = ConsistencyGuard()
         self.patch_service = PatchService()
         self.router = ModelRouter()
-        self.model_client = build_model_client()
+
+    @property
+    def model_client(self):
+        # 每次访问都重建，保证 Studio 端改完配置即时生效，不需要重启进程。
+        return build_model_client()
 
     def run(
         self,
