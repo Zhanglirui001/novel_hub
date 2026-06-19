@@ -35,7 +35,7 @@
 - 数据模型（最小集）：
   - `Project`、`Chapter`、`LoreItem`、`CharacterCard`、`StyleProfile`、`ConsistencyIssue`、`PatchSet`、`ModelRunLog`。
 - 在你现有原型上的演进：
-  - 保留 Streamlit 交互思路，但将“Prompt直连”升级为“服务分层 + 路由 + 守护器”。
+  - 前端迁移为 React/Next.js，后端保留 FastAPI 服务分层，将“Prompt直连”升级为“服务分层 + 路由 + 守护器”。
 
 ### Test Plan
 - 功能测试：
@@ -77,7 +77,7 @@ POST /draft/polish
 POST /consistency/check
 POST /patch/apply
 GET /timeline
-重写 Streamlit 界面，支持“项目管理→设定导入→文风画像→续写/润色→差异采纳→入库→时间线”闭环。
+前端迁移为 Next.js，支持“项目管理→设定导入→文风画像→续写/润色→差异采纳→入库→时间线”闭环。
 增加基础测试（核心逻辑层）。
 关键文件：
 
@@ -90,7 +90,9 @@ app/services/lore_service.py
 app/services/style_service.py
 app/services/consistency_guard.py
 app/services/patch_service.py
-main.py
+web/app/page.tsx
+web/app/projects/[id]/page.tsx
+web/components/workspace/workspace-shell.tsx
 tests/test_core.py
 验证结果：
 
@@ -98,9 +100,11 @@ python -m unittest discover -s tests -v：3 passed
 python -c "import app.api; print('api_import_ok')"：成功（说明 API 可导入并已完成初始化）
 可直接运行：
 
-pip install -r requirements.txt
-启动 API：uvicorn app.api:app --reload
-启动 UI：streamlit run main.py
+后端依赖安装：python -m pip install -r requirements.txt
+启动 API：python -m uvicorn app.api:app --reload --port 8000
+前端依赖安装：cd web; npm install
+启动 Web 前端：npm run dev
+访问地址：前端 http://localhost:3000；API 文档 http://localhost:8000/docs
 补充说明：
 
 我已将 MySQL 连接参数做成默认值（与你给定一致），也支持通过环境变量覆盖。

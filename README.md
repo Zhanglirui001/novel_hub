@@ -14,15 +14,14 @@
 
 ## 架构概览
 
-分层结构：`Streamlit UI` 与 `FastAPI` 两个入口共享同一份服务层逻辑，底层落地到 MySQL。
+分层结构：`Next.js Web` 与 `FastAPI` 后端通过 REST API 协作，FastAPI 复用服务层逻辑，底层落地到 MySQL。
 
 ```
 ┌────────────────────────┐    ┌────────────────────────┐
-│  Streamlit (main.py)   │    │  FastAPI (app/api.py)  │
-└──────────┬─────────────┘    └──────────┬─────────────┘
-           │                             │
-           └────────────┬────────────────┘
-                        ▼
+│  Next.js Web (web/)    │───▶│  FastAPI (app/api.py)  │
+└────────────────────────┘    └──────────┬─────────────┘
+                                          │
+                                          ▼
         ┌──────────────────────────────────┐
         │          app/services            │
         │  ┌────────────┐  ┌────────────┐  │
@@ -45,8 +44,7 @@
 
 ```
 novel_hub/
-├── main.py                       # Streamlit 前端入口
-├── requirements.txt              # 依赖清单
+├── requirements.txt              # 后端依赖清单
 ├── app/
 │   ├── api.py                    # FastAPI 路由层
 │   ├── config.py                 # 配置（含 .env 加载）
@@ -59,6 +57,10 @@ novel_hub/
 │       ├── consistency_guard.py  # 一致性检测
 │       ├── patch_service.py      # 差异补丁应用
 │       └── modeling.py           # 模型路由策略
+├── web/                          # Next.js 前端应用
+│   ├── app/                      # 路由与页面
+│   ├── components/               # 仪表盘、工作台与 UI 组件
+│   └── lib/                      # API 客户端 / 类型 / Query hooks
 └── tests/
     └── test_core.py              # 核心逻辑层单测
 ```
@@ -89,6 +91,7 @@ novel_hub/
 ## 环境要求
 
 - Python 3.10+
+- Node.js 18+
 - MySQL 5.7 / 8.0（启动时会自动建库 `novel_hub` 和相关表）
 
 ## 配置
@@ -108,27 +111,29 @@ MYSQL_CHARSET=utf8mb4
 
 ## 启动方式
 
-### 1. 安装依赖
+### 1. 安装后端依赖
 
 ```powershell
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ### 2. 启动 API 服务（FastAPI）
 
 ```powershell
-uvicorn app.api:app --reload
+python -m uvicorn app.api:app --reload --port 8000
 ```
 
 默认监听 `http://127.0.0.1:8000`，交互文档：`http://127.0.0.1:8000/docs`。
 
-### 3. 启动前端（Streamlit）
+### 3. 安装并启动前端（Next.js）
 
 ```powershell
-streamlit run main.py
+cd web
+npm install
+npm run dev
 ```
 
-默认在浏览器打开 `http://localhost:8501`，左侧菜单包含「项目管理 / 设定导入 / 文风画像 / 正文续写 / 文本润色 / 一致性检测 / 时间线」。
+默认访问 `http://localhost:3000`。前端默认请求 `http://localhost:8000`，可在 `web/.env.local` 中通过 `NEXT_PUBLIC_API_BASE` 覆盖。
 
 ### 4. 运行测试
 

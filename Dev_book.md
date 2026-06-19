@@ -13,18 +13,16 @@
 **分层结构**
 
 ```
-入口层      main.py (Streamlit UI)      app/api.py (FastAPI)
-              \                          /
-               \________ 共享同一套服务 _______/
-                              |
-服务层        app/services/  ←  业务逻辑核心
+入口层      web/ (Next.js)  ──REST──▶  app/api.py (FastAPI)
+                                           |
+服务层                               app/services/  ←  业务逻辑核心
                               |
 数据层        app/database.py (PyMySQL + 自动建库建表)
                               |
               MySQL (novel_hub)
 ```
 
-两个入口共用同一套 service 实例：`main.py` 是 Streamlit 交互界面，`app/api.py` 是 FastAPI 的 8 个 REST 接口。两者都在启动时调用 `init_db()` 自动建库建表。
+前端入口为 `web/` 下的 Next.js 应用，通过 REST API 调用 `app/api.py` 的 FastAPI 接口；业务逻辑集中在 `app/services/`，FastAPI 启动时调用 `init_db()` 自动建库建表。
 
 **五个核心服务**
 
@@ -89,7 +87,6 @@ novel_hub/
 │       ├── consistency_guard.py     # 一致性校验(规则式)
 │       ├── patch_service.py         # 差异补丁生成/应用
 │       └── modeling.py              # 模型路由 + Qwen/Stub 客户端
-├── main.py                   # Streamlit UI(快速验证用)
 ├── tests/test_core.py        # 核心逻辑单测(3 passed)
 ├── requirements.txt
 └── web/                      # Next.js 前端(正式 UI)
@@ -167,13 +164,13 @@ POST /patch/apply  逐条采纳 → 写 chapters(版本+1)+ timeline_events
 
 ### 功能设计&优化
 
-> 我希望进行前后端的分离，前端不再使用streamlit，而是使用React/Next.js 这种足够灵活、高自由度的框架；请重新设计一个优美、高用户体验的前端UI和页面设计方案
+> 我希望进行前后端的分离，前端不再使用 Streamlit，而是使用 React/Next.js 这种足够灵活、高自由度的框架；请重新设计一个优美、高用户体验的前端 UI 和页面设计方案
 
 **后端（[app/api.py](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/app/api.py)，小改动）**
 
 - 加了 CORS 中间件（默认放行 `localhost:3000`，可用 `CORS_ORIGINS` 覆盖）
 - 新增 6 个只读接口给前端用：`GET /projects`、`GET /projects/{id}`、`GET /projects/{id}/chapters`、`GET /chapters/{id}`、`GET /lore`、`GET /style/profile`
-- 没动 service 业务逻辑、没动 DB schema、没删 Streamlit
+- 没动 service 业务逻辑、没动 DB schema；旧 Streamlit 入口已由 Next.js 前端替代并删除
 
 **前端（新增 `web/` 目录，Next.js + shadcn/ui）**
 
@@ -196,7 +193,7 @@ POST /patch/apply  逐条采纳 → 写 chapters(版本+1)+ timeline_events
 
 ```bash
 # 后端（仓库根目录，需 MySQL 运行；无需 LLM key，走离线生成）
-uvicorn app.api:app --reload --port 8000
+python -m uvicorn app.api:app --reload --port 8000
 
 # 前端（web/ 目录）
 cd web && cp .env.local.example .env.local && npm run dev
