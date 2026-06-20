@@ -1,9 +1,15 @@
 import type {
   Chapter,
+  ChapterSaveRequest,
+  ChapterSaveResponse,
   ChapterSummary,
   ConsistencyResult,
   DraftRequest,
   GenerationResult,
+  InlineAnalyzeRequest,
+  InlineAnalyzeResult,
+  InlineReviseRequest,
+  InlineReviseResult,
   LlmSettings,
   LlmSettingsPayload,
   LlmTestResult,
@@ -68,6 +74,13 @@ export const api = {
     return request<Chapter>(`/chapters/${chapterId}`);
   },
 
+  saveChapter(payload: ChapterSaveRequest) {
+    return request<ChapterSaveResponse>("/chapters", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+
   getLore(projectId: number) {
     return request<LoreContext>(`/lore?project_id=${projectId}`);
   },
@@ -93,6 +106,20 @@ export const api = {
   createDraft(taskType: TaskType, payload: DraftRequest) {
     const path = taskType === "continue" ? "/draft/continue" : "/draft/polish";
     return request<GenerationResult>(path, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  analyzeSelection(payload: InlineAnalyzeRequest) {
+    return request<InlineAnalyzeResult>("/draft/analyze", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  reviseSelection(payload: InlineReviseRequest) {
+    return request<InlineReviseResult>("/draft/revise", {
       method: "POST",
       body: JSON.stringify(payload),
     });

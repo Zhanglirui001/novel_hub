@@ -381,6 +381,97 @@ lop:
 
 > 梳理一下inkos项目下的前端的功能点，梳理出来
 
+| 能力                             | 入口                                          |
+| :------------------------------- | :-------------------------------------------- |
+| 长篇建书 / 多本管理              | Sidebar 创建栏 + 我的书架 + BookDetail        |
+| 短篇 / 同人 / 番外 / 仿写 / 续写 | Create 网格 → Chat 草稿 / Import              |
+| 开放世界 & 分支互动（Play）      | Create 网格 → Chat（带 HUD / 选项面板）       |
+| 章节阅读 / 重写 / 审稿           | ChapterReader + BookSidebar                   |
+| Truth/控制面文档编辑             | TruthFiles                                    |
+| 多服务、多模型路由               | ServiceList / ServiceDetail / ProjectSettings |
+| 守护进程、日志、Doctor 诊断      | Daemon / LogViewer / DoctorView               |
+| 文风分析与导入                   | StyleManager                                  |
+| 题材模板管理                     | GenreManager                                  |
+| 数据分析                         | Analytics                                     |
+| 平台趋势                         | RadarView                                     |
+| 多语言（中 / EN）+ 主题切换      | Header                                        |
+| 实时流式对话 + 工具执行可视化    | ChatPage + ai-elements                        |
+
+如需我再深入某个模块（比如 Play 的状态机、ChatPage 的工具调用流、Service 配置流），告诉我重点就行。
+
+> 参考一下inkos，在novel_hub 中集成前端配置大模型api的功能。
+
+**最简集成方案（surgical）**：
+
+1. 后端新增 `model_settings` 单表（一行配置），字段：`provider / base_url / api_key / writer_model / planner_model / judge_model / updated_at`。
+2. 后端新增 `/settings/llm`（GET/PUT）和 `/settings/llm/test`（POST 探活）。
+3. `modeling.build_model_client()` 优先读 DB 配置，DB 为空时回落到现有 env 路径，保持向后兼容。
+4. 前端新增 `/settings` 页，仪表盘头部加「模型配置」入口。表单字段：Provider（目前只有 Qwen / OpenAI-compatible / Stub）、Base URL、API Key（保存时加密展示掩码）、三个模型名 + 测试连接按钮
+
+**改动文件**
+
+后端：
+
+- `app/database.py` — 新建 `model_settings` 单行配置表
+- `app/services/settings_service.py` — 读 / 写 / 测试连通性
+- `app/services/modeling.py` — `build_model_client()` 优先 DB → 回落 env
+- `app/services/generation_service.py` — `model_client` 改为 property，配置改完即时生效
+- `app/schemas.py` — 新增 `LlmSettingsPayload`
+- `app/api.py` — 新增 `GET / PUT /settings/llm`、`POST /settings/llm/test`
+
+前端：
+
+- `web/lib/types.ts` — `LlmSettings / LlmSettingsPayload / LlmTestResult`
+- `web/lib/api.ts` — `getLlmSettings / updateLlmSettings / testLlmSettings`
+- `web/lib/queries.ts` — 三个 react-query hook
+- `web/app/settings/page.tsx` — 配置页（服务商、Base URL、API Key、三角色模型、测试连接）
+- `web/app/page.tsx` — 仪表盘头部加齿轮入口
+
+**关键设计点**
+
+- **API Key 不回显原文**：`GET` 只返回掩码（如 `sk-***abcd`）；`PUT` 时 `api_key` 留空表示「保留 DB 中已存的值」
+- **provider=stub 模式**：UI 自动禁用 Base URL / API Key / 测试连接，本地无 Key 也能跑
+- **DB 未就绪时安静回落**：`modeling._load_db_settings()` try/except 兜底，不会让旧 env 部署崩
+- **不引入多服务/多路由 UI**：保持 surgical，单组配置覆盖三个角色
+
+> 似乎正文文本没有持久化存储，并且希望增加一个保存键和自动保存文本模式。
+
+**后端**
+
+- `app/schemas.py` — 新增 `ChapterSavePayload`
+- `app/api.py` — 新增 `PUT /chapters`：传 `chapter_id` 走更新；不传则按 `(project_id, title)` 上插（找到→update + version+1；找不到→insert v1）
+
+**前端**
+
+- `web/lib/types.ts` — `ChapterSaveRequest / ChapterSaveResponse`
+- `web/lib/api.ts` — `api.saveChapter`
+- `web/lib/queries.ts` — `useSaveChapter`
+- `web/components/workspace/workspace-context.tsx` — 保存状态机：`saveStatus / lastSavedAt / autosaveEnabled / saveNow`，5 秒去抖自动保存，`Ctrl/Cmd+S` 立即保存，`beforeunload` 拦截
+- `web/components/workspace/editor-pane.tsx` — 标题栏加「自动保存」勾选 + 「保存」按钮；状态条显示 `已保存 / 未保存修改 / 保存中… / 保存失败` + 最近保存时间
+
+**关键行为**
+
+- **默认开自动保存**，输入停止 5 秒后落盘
+- **Ctrl/Cmd+S** 立即保存，按钮在 dirty/error 时可点
+- **空白稿不落盘**：避免 textarea 没动过就生成空章节
+- **loadChapter 不会触发 dirty**：用 `skipDirtyRef` 跳过加载后第一次状态变更
+- **未保存时关页面**会触发浏览器原生确认
+- **章节列表自动刷新**：`useSaveChapter` 在成功后 invalidate `chapters` query
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

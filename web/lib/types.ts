@@ -118,10 +118,61 @@ export interface DraftRequest {
   target_latency_ms: number;
 }
 
+export interface InlineAnalyzeRequest {
+  project_id: number;
+  selection: string;
+  prefix: string;
+  suffix: string;
+  chapter_title: string;
+}
+
+export interface InlineAnalyzeResult {
+  analysis: string;
+  consistency_score: number;
+  issues: ConsistencyIssue[];
+  chapter_title: string;
+}
+
+export interface InlineReviseRequest {
+  project_id: number;
+  selection: string;
+  prefix: string;
+  suffix: string;
+  annotation: string;
+  analysis: string;
+  chapter_title: string;
+  budget: Budget;
+  target_latency_ms: number;
+}
+
+export interface InlineReviseResult {
+  result_text: string;
+  consistency_score: number;
+  issues: ConsistencyIssue[];
+  patch_set_id: number;
+  patch_items: PatchItem[];
+  chapter_title: string;
+  model_route: ModelRoute;
+}
+
 export interface PatchApplyResponse {
   chapter_id: number;
   version: number;
   applied_text: string;
+}
+
+export interface ChapterSaveRequest {
+  project_id: number;
+  title: string;
+  content: string;
+  chapter_id?: number | null;
+}
+
+export interface ChapterSaveResponse {
+  chapter_id: number;
+  version: number;
+  updated_at: string;
+  created: boolean;
 }
 
 export interface TimelineEvent {

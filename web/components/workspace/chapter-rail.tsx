@@ -1,6 +1,8 @@
 "use client";
 
 import { FilePlus, FileText } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -13,6 +15,7 @@ import { useWorkspace } from "./workspace-context";
 export function ChapterRail() {
   const { projectId, activeChapterId, loadChapter } = useWorkspace();
   const { data: chapters, isLoading } = useChapters(projectId);
+  const queryClient = useQueryClient();
 
   async function openChapter(id: number) {
     try {
@@ -23,9 +26,26 @@ export function ChapterRail() {
     }
   }
 
-  function newChapter() {
-    const n = (chapters?.length ?? 0) + 1;
-    loadChapter(null, `第${n}章`, "");
+  async function newChapter() {
+    // 在已有标题集合外找一个最小的「第N章」,避免 PUT /chapters 走到「按 title 上插」
+    // 时撞到旧章导致覆盖而非新增。
+    const titles = new Set((chapters ?? []).map((c) => c.title));
+    let n = (chapters?.length ?? 0) + 1;
+    while (titles.has(`第${n}章`)) n += 1;
+    const title = `第${n}章`;
+
+    try {
+      const res = await api.saveChapter({
+        project_id: projectId,
+        title,
+        content: "",
+        chapter_id: null,
+      });
+      loadChapter(res.chapter_id, title, "");
+      queryClient.invalidateQueries({ queryKey: ["chapters", projectId] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "新增章节失败");
+    }
   }
 
   return (

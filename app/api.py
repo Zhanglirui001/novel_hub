@@ -5,8 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import get_conn, init_db, utc_now
 from app.schemas import (
+    ChapterSavePayload,
     ConsistencyPayload,
     DraftPayload,
+    InlineAnalyzePayload,
+    InlineRevisePayload,
     LlmSettingsPayload,
     LoreImportPayload,
     PatchApplyPayload,
@@ -100,6 +103,52 @@ def get_chapter(chapter_id: int):
     return row
 
 
+@app.put("/chapters")
+def save_chapter(payload: ChapterSavePayload):
+    """直接保存正文（手动保存 / 自动保存通道，区别于 patch/apply）。"""
+    now = utc_now()
+    with get_conn() as conn:
+        c = conn.cursor()
+        target_id = payload.chapter_id
+        if target_id is None:
+            c.execute(
+                "SELECT id, version FROM chapters WHERE project_id = %s AND title = %s ORDER BY id DESC LIMIT 1",
+                (payload.project_id, payload.title),
+            )
+            existing = c.fetchone()
+            if existing:
+                target_id = existing["id"]
+                version = existing["version"] + 1
+            else:
+                c.execute(
+                    "INSERT INTO chapters (project_id, title, content, version, updated_at) VALUES (%s, %s, %s, %s, %s)",
+                    (payload.project_id, payload.title, payload.content, 1, now),
+                )
+                return {
+                    "chapter_id": c.lastrowid,
+                    "version": 1,
+                    "updated_at": now,
+                    "created": True,
+                }
+        else:
+            c.execute("SELECT version FROM chapters WHERE id = %s", (target_id,))
+            row = c.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail=f"chapter_id={target_id} 不存在")
+            version = row["version"] + 1
+
+        c.execute(
+            "UPDATE chapters SET title = %s, content = %s, version = %s, updated_at = %s WHERE id = %s",
+            (payload.title, payload.content, version, now, target_id),
+        )
+        return {
+            "chapter_id": target_id,
+            "version": version,
+            "updated_at": now,
+            "created": False,
+        }
+
+
 @app.post("/lore/import")
 def import_lore(payload: LoreImportPayload):
     return lore_service.import_lore(payload.model_dump())
@@ -149,6 +198,36 @@ def polish_draft(payload: DraftPayload):
 def check_consistency(payload: ConsistencyPayload):
     context = lore_service.build_context(payload.project_id)
     return consistency_guard.check(payload.text, context)
+
+
+@app.post("/draft/analyze")
+def analyze_segment(payload: InlineAnalyzePayload):
+    if not payload.selection.strip():
+        raise HTTPException(status_code=400, detail="selection 不能为空")
+    return generation_service.analyze_segment(
+        project_id=payload.project_id,
+        selection=payload.selection,
+        prefix=payload.prefix,
+        suffix=payload.suffix,
+        chapter_title=payload.chapter_title,
+    )
+
+
+@app.post("/draft/revise")
+def revise_segment(payload: InlineRevisePayload):
+    if not payload.selection.strip():
+        raise HTTPException(status_code=400, detail="selection 不能为空")
+    return generation_service.revise_segment(
+        project_id=payload.project_id,
+        selection=payload.selection,
+        prefix=payload.prefix,
+        suffix=payload.suffix,
+        annotation=payload.annotation,
+        analysis=payload.analysis,
+        chapter_title=payload.chapter_title,
+        budget=payload.budget,
+        target_latency_ms=payload.target_latency_ms,
+    )
 
 
 @app.post("/patch/apply")

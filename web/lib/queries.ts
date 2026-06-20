@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./api";
 import type {
+  ChapterSaveRequest,
   DraftRequest,
+  InlineAnalyzeRequest,
+  InlineReviseRequest,
   LlmSettingsPayload,
   LoreImportRequest,
   StyleProfileRequest,
@@ -117,6 +120,16 @@ export function useApplyPatch(projectId: number) {
   });
 }
 
+export function useSaveChapter(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ChapterSaveRequest) => api.saveChapter(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chapters", projectId] });
+    },
+  });
+}
+
 export function useTimeline(projectId: number) {
   return useQuery({
     queryKey: ["timeline", projectId],
@@ -145,5 +158,17 @@ export function useUpdateLlmSettings() {
 export function useTestLlmSettings() {
   return useMutation({
     mutationFn: (payload: LlmSettingsPayload) => api.testLlmSettings(payload),
+  });
+}
+
+export function useAnalyzeSelection() {
+  return useMutation({
+    mutationFn: (payload: InlineAnalyzeRequest) => api.analyzeSelection(payload),
+  });
+}
+
+export function useReviseSelection() {
+  return useMutation({
+    mutationFn: (payload: InlineReviseRequest) => api.reviseSelection(payload),
   });
 }
