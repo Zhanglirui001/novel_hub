@@ -3,7 +3,7 @@ import { Settings } from "lucide-react";
 
 import { CreateProjectDialog } from "@/components/dashboard/create-project-dialog";
 import { ProjectGallery } from "@/components/dashboard/project-gallery";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemePicker } from "@/components/theme-picker";
 import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
@@ -28,7 +28,7 @@ export default function DashboardPage() {
                 <Settings className="h-4 w-4" />
               </Link>
             </Button>
-            <ThemeToggle />
+            <ThemePicker />
             <CreateProjectDialog />
           </div>
         </header>

@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { ChevronLeft, PanelLeft } from "lucide-react";
 
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemePicker } from "@/components/theme-picker";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProject } from "@/lib/queries";
@@ -43,7 +43,7 @@ export function WorkspaceShell() {
             <h1 className="display-title text-lg">{project?.name ?? "作品"}</h1>
           )}
         </div>
-        <ThemeToggle />
+        <ThemePicker />
       </header>
 
       {/* 三栏 */}

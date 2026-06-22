@@ -18,9 +18,9 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STATUS_TONE: Record<string, string> = {
   idle: "text-muted-foreground",
-  dirty: "text-amber-600 dark:text-amber-400",
+  dirty: "text-warning",
   saving: "text-muted-foreground",
-  saved: "text-emerald-600 dark:text-emerald-400",
+  saved: "text-success",
   error: "text-destructive",
 };
 
