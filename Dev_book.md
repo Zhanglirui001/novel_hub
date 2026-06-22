@@ -488,6 +488,45 @@ lop:
 
 ### 交互功能开发
 
+> 当前的novel_hub仅仅支持亮、暗色；请支持纸张色等更多主题配置
+>
+
+**新增 3 套护眼主题** — [globals.css](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/app/globals.css)，每套都是完整的 token 集（背景/前景/卡片/语义色等）：
+
+- **纸张**（`.sepia`）— 暖米黄底 + 棕墨字 + 赭石 accent，久读护眼
+- **绿豆沙**（`.green`）— 柔和豆沙绿 + 深灰绿字
+- **夜蓝**（`.night`）— 深空蓝低蓝光，比纯黑更柔和
+
+**主题选择器** — 新建 [theme-picker.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/theme-picker.tsx) 替换原来的明暗切换按钮。下拉菜单带色板小圆点、图标、中文名与说明，当前项打勾；支持点击外部 / Esc 关闭。已替换 [page.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/app/page.tsx) 与 [workspace-shell.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/workspace/workspace-shell.tsx) 两处用法，删除了旧的 `theme-toggle.tsx`。
+
+**注册主题** — [providers.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/providers.tsx) 的 `ThemeProvider` 加上 `themes={["light","dark","sepia","green","night"]}`。
+
+**让既有组件跟随主题**：
+
+- [sonner.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/ui/sonner.tsx) — toast 把自定义主题映射到对应明/暗基底（`night`→dark，其余→light）
+- [editor-pane.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/workspace/editor-pane.tsx) — 保存状态色从硬编码的 `amber/emerald`（只有 `dark:` 变体、不会适配新主题）改为语义 token `text-warning`/`text-success`，现在所有主题下都正确
+
+`npx tsc --noEmit` 通过，无类型错误。
+
+
+
+> 选中、点评&ai修改功能能不能在原地产生修改预览，类似代码改动的预览效果，并且支持手动编辑，不放在右侧批注栏了，批注栏可以放其他版本的预览，点击会替换主预览
+
+把「选中 → 点评 → AI 修改」从右侧批注栏搬到了正文里，做成代码改动风格的就地预览：
+
+**新交互流程**
+
+1. 在正文选中一段 → 编辑器底部浮出**内联浮层**（[inline-revise-overlay.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/workspace/inline-revise-overlay.tsx)）：AI 分析、写批注、`生成修改并就地预览` 都在这里，不再占右栏。
+2. 生成后，正文中那一段**就地变成字符级 diff**（[inline-diff-card.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/workspace/inline-diff-card.tsx)）——红色删除线 / 绿色新增，前后文只读降透明度。
+3. 卡片支持 `✎ 编辑` 切到文本框**手动微调**，diff 实时重算；`采纳并替换` 写回正文并定位光标，`放弃` 退出，`↻ 重新生成` 再出一个版本。
+4. 右侧 `批注` tab 改名为 **`版本`**（[inline-revise-panel.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/workspace/inline-revise-panel.tsx)）：同一选区的多个候选以卡片列出，**点击任意卡即把它换成主预览**，可删除单个版本。
+
+**支撑改动**
+
+- [lib/diff.ts](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/lib/diff.ts)：新增 LCS 字符级 diff（`Array.from` 切分兼容中文）。
+- [workspace-context.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/workspace/workspace-context.tsx)：新增 `reviseTarget` / `candidates` / `activeCandidateId` 状态与一组动作；换章自动 `clearRevise()`。候选 id 用单调递增 ref（规避环境禁用的 `Math.random`/`Date.now`）。
+- 后端零改动——复用了已有的 `/draft/analyze`、`/draft/revise`。
+
 
 
 ### 深度功能开发
