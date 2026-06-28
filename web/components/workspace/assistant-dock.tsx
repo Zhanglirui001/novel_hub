@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Layers, PenLine, ScrollText, ShieldCheck, Clock, MessageSquare } from "lucide-react";
+import { FileText, Layers, PenLine, ScrollText, ShieldCheck, Clock, Files } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,7 +15,7 @@ import { useWorkspace } from "./workspace-context";
 
 const tabs = [
   { value: "create", label: "创作", icon: PenLine, Panel: GenerationPanel },
-  { value: "revise", label: "批注", icon: MessageSquare, Panel: InlineRevisePanel },
+  { value: "revise", label: "版本", icon: Files, Panel: InlineRevisePanel },
   { value: "consistency", label: "一致性", icon: ShieldCheck, Panel: ConsistencyPanel },
   { value: "patch", label: "修改", icon: Layers, Panel: PatchReview },
   { value: "lore", label: "设定", icon: ScrollText, Panel: LorePanel },

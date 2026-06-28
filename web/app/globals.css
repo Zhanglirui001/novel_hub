@@ -5,7 +5,10 @@
 /*
  * 现代杂志风主题 tokens。
  * 亮：近纯白底 + 墨黑字 + 靛蓝 accent；暗：深石板底 + 同 accent。
+ * 另含护眼配色：纸张(sepia 米黄)、绿豆沙(green)、夜蓝(night)。
  * severity 语义色：destructive(高) / warning(中) / muted(低)。
+ * 新增主题时：在此添加一个与主题名同名的 class，并在 providers.tsx 的
+ * themes 列表与 theme-picker.tsx 的 THEMES 中登记。
  */
 @layer base {
   :root {
@@ -80,6 +83,117 @@
     --border: 240 6% 20%;
     --input: 240 6% 22%;
     --ring: 243 80% 68%;
+  }
+
+  /* 纸张 / 米黄护眼：暖白底 + 棕墨字 + 赭石 accent */
+  .sepia {
+    --background: 40 38% 94%; /* #F1E9D8 暖纸 */
+    --foreground: 30 25% 18%; /* 棕墨 */
+
+    --card: 42 44% 96%;
+    --card-foreground: 30 25% 18%;
+
+    --popover: 42 44% 96%;
+    --popover-foreground: 30 25% 18%;
+
+    --primary: 22 60% 45%; /* 赭石 accent */
+    --primary-foreground: 42 44% 97%;
+
+    --secondary: 40 30% 88%;
+    --secondary-foreground: 30 25% 20%;
+
+    --muted: 40 28% 88%;
+    --muted-foreground: 32 16% 42%;
+
+    --accent: 36 45% 86%;
+    --accent-foreground: 22 60% 35%;
+
+    --destructive: 0 65% 48%;
+    --destructive-foreground: 42 44% 97%;
+
+    --warning: 32 80% 44%;
+    --warning-foreground: 40 44% 97%;
+
+    --success: 130 40% 38%;
+    --success-foreground: 42 44% 97%;
+
+    --border: 38 26% 82%;
+    --input: 38 26% 82%;
+    --ring: 22 60% 45%;
+  }
+
+  /* 绿豆沙 / 护眼绿：柔和青绿底 + 深灰绿字 */
+  .green {
+    --background: 92 24% 86%; /* #CCE8CF 豆沙绿 */
+    --foreground: 150 18% 16%;
+
+    --card: 95 30% 90%;
+    --card-foreground: 150 18% 16%;
+
+    --popover: 95 30% 90%;
+    --popover-foreground: 150 18% 16%;
+
+    --primary: 158 45% 34%; /* 松绿 accent */
+    --primary-foreground: 95 30% 96%;
+
+    --secondary: 92 22% 80%;
+    --secondary-foreground: 150 18% 18%;
+
+    --muted: 92 20% 80%;
+    --muted-foreground: 150 12% 38%;
+
+    --accent: 120 28% 80%;
+    --accent-foreground: 158 45% 28%;
+
+    --destructive: 0 62% 46%;
+    --destructive-foreground: 95 30% 96%;
+
+    --warning: 36 78% 42%;
+    --warning-foreground: 95 30% 96%;
+
+    --success: 150 50% 34%;
+    --success-foreground: 95 30% 96%;
+
+    --border: 92 18% 74%;
+    --input: 92 18% 74%;
+    --ring: 158 45% 34%;
+  }
+
+  /* 夜蓝 / 深空蓝：低蓝光的深靛底，比纯黑更柔和 */
+  .night {
+    --background: 222 38% 11%; /* #111A2B 深夜蓝 */
+    --foreground: 215 30% 88%;
+
+    --card: 221 34% 15%;
+    --card-foreground: 215 30% 88%;
+
+    --popover: 221 34% 15%;
+    --popover-foreground: 215 30% 88%;
+
+    --primary: 205 80% 62%; /* 天青 accent */
+    --primary-foreground: 222 38% 11%;
+
+    --secondary: 220 26% 20%;
+    --secondary-foreground: 215 30% 88%;
+
+    --muted: 220 26% 20%;
+    --muted-foreground: 214 18% 60%;
+
+    --accent: 210 45% 26%;
+    --accent-foreground: 205 80% 82%;
+
+    --destructive: 0 60% 52%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 88% 56%;
+    --warning-foreground: 222 38% 11%;
+
+    --success: 152 55% 48%;
+    --success-foreground: 222 38% 11%;
+
+    --border: 220 24% 24%;
+    --input: 220 24% 26%;
+    --ring: 205 80% 62%;
   }
 }
 

@@ -16,6 +16,26 @@ export interface EditorSelection {
   text: string;
 }
 
+// 正在被修改的选区目标——多个候选版本共享同一目标（同一 start/end/原文）。
+export interface ReviseTarget {
+  start: number;
+  end: number;
+  originalText: string; // diff 基准 = 被替换的原文
+  prefix: string; // 重新生成所需上下文
+  suffix: string;
+}
+
+// 一个候选修改版本。
+export interface ReviseCandidate {
+  id: string;
+  label: string; // "版本 1"…
+  resultText: string; // AI 原始输出
+  editedText: string; // 可编辑工作副本，初值 = resultText
+  annotation: string;
+  analysis: string;
+  consistencyScore: number;
+}
+
 interface WorkspaceState {
   projectId: number;
   // 编辑器当前内容（正文）
@@ -36,6 +56,18 @@ interface WorkspaceState {
   // 编辑器选区，供「批注修改」面板读取
   selection: EditorSelection | null;
   setSelection: (s: EditorSelection | null) => void;
+  // 选段修改：原地 diff 预览 + 多候选版本
+  reviseTarget: ReviseTarget | null;
+  candidates: ReviseCandidate[];
+  activeCandidateId: string | null;
+  // 设定新目标并清空旧候选（新一轮修改的起点）
+  startReviseTarget: (t: ReviseTarget) => void;
+  // 追加一个候选并设为 active；返回新候选 id
+  addCandidate: (c: Omit<ReviseCandidate, "id" | "label">) => string;
+  setActiveCandidate: (id: string) => void;
+  updateCandidateText: (id: string, text: string) => void;
+  removeCandidate: (id: string) => void;
+  clearRevise: () => void;
   // 把指定区间替换为新文本，并把光标定位到末尾
   replaceRange: (start: number, end: number, text: string) => void;
   // 把 textarea ref 注册进来，方便重置选区/聚焦
@@ -66,6 +98,12 @@ export function WorkspaceProvider({
   const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(null);
   const [autosaveEnabled, setAutosaveEnabled] = React.useState(true);
   const [selection, setSelection] = React.useState<EditorSelection | null>(null);
+  const [reviseTarget, setReviseTarget] = React.useState<ReviseTarget | null>(null);
+  const [candidates, setCandidates] = React.useState<ReviseCandidate[]>([]);
+  const [activeCandidateId, setActiveCandidateId] = React.useState<string | null>(null);
+
+  // 候选 id / 序号计数器（环境禁用 Math.random / Date.now，用单调递增 ref）。
+  const candidateSeq = React.useRef(0);
 
   const editorRef = React.useRef<HTMLTextAreaElement | null>(null);
   const registerEditor = React.useCallback((el: HTMLTextAreaElement | null) => {
@@ -84,6 +122,52 @@ export function WorkspaceProvider({
   React.useEffect(() => { titleRef.current = chapterTitle; }, [chapterTitle]);
   React.useEffect(() => { chapterIdRef.current = activeChapterId; }, [activeChapterId]);
 
+  const clearRevise = React.useCallback(() => {
+    setReviseTarget(null);
+    setCandidates([]);
+    setActiveCandidateId(null);
+  }, []);
+
+  const startReviseTarget = React.useCallback((t: ReviseTarget) => {
+    setReviseTarget(t);
+    setCandidates([]);
+    setActiveCandidateId(null);
+  }, []);
+
+  const addCandidate = React.useCallback(
+    (c: Omit<ReviseCandidate, "id" | "label">) => {
+      candidateSeq.current += 1;
+      const seq = candidateSeq.current;
+      const id = `cand-${seq}`;
+      const candidate: ReviseCandidate = { ...c, id, label: `版本 ${seq}` };
+      setCandidates((prev) => [...prev, candidate]);
+      setActiveCandidateId(id);
+      return id;
+    },
+    [],
+  );
+
+  const setActiveCandidate = React.useCallback((id: string) => {
+    setActiveCandidateId(id);
+  }, []);
+
+  const updateCandidateText = React.useCallback((id: string, text: string) => {
+    setCandidates((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, editedText: text } : c)),
+    );
+  }, []);
+
+  const removeCandidate = React.useCallback((id: string) => {
+    setCandidates((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      setActiveCandidateId((active) =>
+        active === id ? (next.length ? next[next.length - 1].id : null) : active,
+      );
+      if (next.length === 0) setReviseTarget(null);
+      return next;
+    });
+  }, []);
+
   const loadChapter = React.useCallback(
     (id: number | null, title: string, content: string) => {
       skipDirtyRef.current = true;
@@ -92,9 +176,10 @@ export function WorkspaceProvider({
       setDraft(content);
       setLastResult(null);
       setSelection(null);
+      clearRevise();
       setSaveStatus(id ? "saved" : "idle");
     },
-    [],
+    [clearRevise],
   );
 
   const replaceRange = React.useCallback(
@@ -197,6 +282,15 @@ export function WorkspaceProvider({
     setDockTab,
     selection,
     setSelection,
+    reviseTarget,
+    candidates,
+    activeCandidateId,
+    startReviseTarget,
+    addCandidate,
+    setActiveCandidate,
+    updateCandidateText,
+    removeCandidate,
+    clearRevise,
     replaceRange,
     registerEditor,
     saveStatus,

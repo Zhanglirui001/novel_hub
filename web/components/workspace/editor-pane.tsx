@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+<<<<<<< HEAD
 import { useQueryClient } from "@tanstack/react-query";
 import { Save, Sparkles, HardDriveDownload } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +10,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useBackupChapter, useBackupStatus } from "@/lib/queries";
 import { countChars, cn } from "@/lib/utils";
+=======
+import { Save } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { countChars } from "@/lib/utils";
+import { InlineDiffCard } from "./inline-diff-card";
+import { InlineReviseOverlay } from "./inline-revise-overlay";
+>>>>>>> 0319af8ab62cb6400e2594484e49cb09156a8797
 import { useWorkspace } from "./workspace-context";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -21,9 +31,9 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STATUS_TONE: Record<string, string> = {
   idle: "text-muted-foreground",
-  dirty: "text-amber-600 dark:text-amber-400",
+  dirty: "text-warning",
   saving: "text-muted-foreground",
-  saved: "text-emerald-600 dark:text-emerald-400",
+  saved: "text-success",
   error: "text-destructive",
 };
 
@@ -39,10 +49,10 @@ export function EditorPane() {
     autosaveEnabled,
     setAutosaveEnabled,
     saveNow,
-    selection,
     setSelection,
     registerEditor,
-    setDockTab,
+    reviseTarget,
+    activeCandidateId,
   } = useWorkspace();
 
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -94,12 +104,8 @@ export function EditorPane() {
   }, [setSelection]);
 
   const canSave = saveStatus === "dirty" || saveStatus === "error";
-  const hasSelection = !!selection && selection.text.trim().length > 0;
-
-  const openInlineRevise = React.useCallback(() => {
-    if (!hasSelection) return;
-    setDockTab("revise");
-  }, [hasSelection, setDockTab]);
+  // 预览模式：有目标 + 有 active 候选时，正文以「原地 diff」呈现，textarea 暂时让位。
+  const previewing = !!reviseTarget && activeCandidateId != null;
 
   return (
     <div className="flex h-full flex-col">
@@ -149,37 +155,38 @@ export function EditorPane() {
       {/* 正文：限定阅读栏宽，杂志沉浸感 */}
       <div className="relative flex-1 overflow-y-auto soft-scroll">
         <div className="mx-auto max-w-2xl px-8 py-8">
-          <textarea
-            ref={setRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onSelect={syncSelection}
-            onMouseUp={syncSelection}
-            onKeyUp={syncSelection}
-            onBlur={() => {
-              // 不在 blur 时清空选区——用户点击右栏按钮时 textarea 会失焦,
-              // 选区信息仍要保留供 InlineRevisePanel 使用。
-            }}
-            placeholder="在此落笔。写下正文，然后在右侧让 AI 续写、润色，并守护设定一致性。"
-            className="prose-editor min-h-[60vh] w-full resize-none border-0 bg-transparent outline-none placeholder:text-muted-foreground/50"
-            spellCheck={false}
-          />
+          {previewing && reviseTarget ? (
+            // 原地预览：前后文只读，中间嵌入 diff 卡。
+            <div className="prose-editor min-h-[60vh] w-full whitespace-pre-wrap break-words">
+              <span className="text-foreground/60">
+                {draft.slice(0, reviseTarget.start)}
+              </span>
+              <InlineDiffCard />
+              <span className="text-foreground/60">
+                {draft.slice(reviseTarget.end)}
+              </span>
+            </div>
+          ) : (
+            <textarea
+              ref={setRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onSelect={syncSelection}
+              onMouseUp={syncSelection}
+              onKeyUp={syncSelection}
+              onBlur={() => {
+                // 不在 blur 时清空选区——用户点击浮层/右栏按钮时 textarea 会失焦，
+                // 选区信息仍要保留供浮层与版本面板使用。
+              }}
+              placeholder="在此落笔。写下正文，然后选中段落让 AI 分析、批注、就地修改。"
+              className="prose-editor min-h-[60vh] w-full resize-none border-0 bg-transparent outline-none placeholder:text-muted-foreground/50"
+              spellCheck={false}
+            />
+          )}
         </div>
 
-        {/* 选中文字时浮出的「AI 分析」入口 */}
-        {hasSelection && (
-          <div className="pointer-events-none sticky bottom-4 flex justify-center">
-            <Button
-              size="sm"
-              onClick={openInlineRevise}
-              className="pointer-events-auto shadow-lg"
-              title="对选中文字进行 AI 分析与批注修改"
-            >
-              <Sparkles className="h-4 w-4" />
-              AI 分析选段（{countChars(selection!.text)} 字）
-            </Button>
-          </div>
-        )}
+        {/* 选中文字时浮出的内联批注/分析浮层（预览模式下隐藏） */}
+        {!previewing && <InlineReviseOverlay />}
       </div>
 
       {/* 状态条 */}

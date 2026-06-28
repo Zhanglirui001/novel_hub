@@ -6,9 +6,14 @@ import { Toaster as Sonner, type ToasterProps } from "sonner";
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "light" } = useTheme();
 
+  // sonner 仅识别 light/dark/system；自定义阅读主题映射到对应明暗基底，
+  // 具体配色仍由下方 token 类驱动，故视觉上跟随当前主题。
+  const sonnerTheme: ToasterProps["theme"] =
+    theme === "dark" || theme === "night" ? "dark" : "light";
+
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={sonnerTheme}
       className="toaster group"
       toastOptions={{
         classNames: {
