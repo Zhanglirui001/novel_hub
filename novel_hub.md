@@ -101,7 +101,8 @@ python -c "import app.api; print('api_import_ok')"：成功（说明 API 可导�
 可直接运行：
 
 后端依赖安装：python -m pip install -r requirements.txt
-启动 API：python -m uvicorn app.api:app --reload --port 8000
+启动 API：python -m uvicorn app.api:app --reload --host 0.0.0.0 --port 8000
+
 前端依赖安装：cd web; npm install
 启动 Web 前端：npm run dev
 访问地址：前端 http://localhost:3000；API 文档 http://localhost:8000/docs

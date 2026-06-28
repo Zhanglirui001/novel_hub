@@ -25,11 +25,21 @@ import type {
   TimelineEvent,
 } from "./types";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://localhost:8000";
+function getApiBase() {
+  const configured = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "");
+  if (configured) {
+    return configured;
+  }
+
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:8000`;
+  }
+
+  return "http://localhost:8000";
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${getApiBase()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

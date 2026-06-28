@@ -32,8 +32,10 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <body className={`${notoSans.variable} ${notoSerif.variable} font-sans`}>
-        <Providers>{children}</Providers>
-        <Toaster position="top-center" richColors />
+        <Providers>
+          {children}
+          <Toaster position="top-center" richColors />
+        </Providers>
       </body>
     </html>
   );
