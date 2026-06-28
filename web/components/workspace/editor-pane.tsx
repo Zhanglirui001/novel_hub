@@ -1,16 +1,6 @@
 "use client";
 
 import * as React from "react";
-<<<<<<< HEAD
-import { useQueryClient } from "@tanstack/react-query";
-import { Save, Sparkles, HardDriveDownload } from "lucide-react";
-import { toast } from "sonner";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useBackupChapter, useBackupStatus } from "@/lib/queries";
-import { countChars, cn } from "@/lib/utils";
-=======
 import { Save } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -18,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { countChars } from "@/lib/utils";
 import { InlineDiffCard } from "./inline-diff-card";
 import { InlineReviseOverlay } from "./inline-revise-overlay";
->>>>>>> 0319af8ab62cb6400e2594484e49cb09156a8797
 import { useWorkspace } from "./workspace-context";
 
 const STATUS_LABEL: Record<string, string> = {
