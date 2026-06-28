@@ -77,6 +77,92 @@ def get_conn():
         _release(conn)
 
 
+def _column_exists(cursor, table: str, column: str) -> bool:
+    cursor.execute(f"SHOW COLUMNS FROM `{table}` LIKE %s", (column,))
+    return cursor.fetchone() is not None
+
+
+def _index_exists(cursor, table: str, index: str) -> bool:
+    cursor.execute(f"SHOW INDEX FROM `{table}` WHERE Key_name = %s", (index,))
+    return cursor.fetchone() is not None
+
+
+def _ensure_chapter_hierarchy(cursor) -> None:
+    sort_added = False
+    if not _column_exists(cursor, "chapters", "group_title"):
+        cursor.execute(
+            "ALTER TABLE chapters ADD COLUMN group_title VARCHAR(255) NOT NULL DEFAULT '默认卷' AFTER title"
+        )
+    if not _column_exists(cursor, "chapters", "sort_order"):
+        cursor.execute(
+            "ALTER TABLE chapters ADD COLUMN sort_order INT NOT NULL DEFAULT 0 AFTER content"
+        )
+        sort_added = True
+
+    if sort_added:
+        cursor.execute("SELECT id, project_id FROM chapters ORDER BY project_id ASC, id ASC")
+        rows = cursor.fetchall()
+        current_project = None
+        order = 0
+        for row in rows:
+            if row["project_id"] != current_project:
+                current_project = row["project_id"]
+                order = 0
+            cursor.execute(
+                "UPDATE chapters SET sort_order = %s WHERE id = %s",
+                (order, row["id"]),
+            )
+            order += 1
+
+    if not _index_exists(cursor, "chapters", "idx_chapters_project_group_order"):
+        cursor.execute(
+            "CREATE INDEX idx_chapters_project_group_order ON chapters(project_id, group_title, sort_order, id)"
+        )
+
+
+def _column_exists(cursor, table: str, column: str) -> bool:
+    cursor.execute(f"SHOW COLUMNS FROM `{table}` LIKE %s", (column,))
+    return cursor.fetchone() is not None
+
+
+def _index_exists(cursor, table: str, index: str) -> bool:
+    cursor.execute(f"SHOW INDEX FROM `{table}` WHERE Key_name = %s", (index,))
+    return cursor.fetchone() is not None
+
+
+def _ensure_chapter_hierarchy(cursor) -> None:
+    sort_added = False
+    if not _column_exists(cursor, "chapters", "group_title"):
+        cursor.execute(
+            "ALTER TABLE chapters ADD COLUMN group_title VARCHAR(255) NOT NULL DEFAULT '默认卷' AFTER title"
+        )
+    if not _column_exists(cursor, "chapters", "sort_order"):
+        cursor.execute(
+            "ALTER TABLE chapters ADD COLUMN sort_order INT NOT NULL DEFAULT 0 AFTER content"
+        )
+        sort_added = True
+
+    if sort_added:
+        cursor.execute("SELECT id, project_id FROM chapters ORDER BY project_id ASC, id ASC")
+        rows = cursor.fetchall()
+        current_project = None
+        order = 0
+        for row in rows:
+            if row["project_id"] != current_project:
+                current_project = row["project_id"]
+                order = 0
+            cursor.execute(
+                "UPDATE chapters SET sort_order = %s WHERE id = %s",
+                (order, row["id"]),
+            )
+            order += 1
+
+    if not _index_exists(cursor, "chapters", "idx_chapters_project_group_order"):
+        cursor.execute(
+            "CREATE INDEX idx_chapters_project_group_order ON chapters(project_id, group_title, sort_order, id)"
+        )
+
+
 def init_db() -> None:
     bootstrap = _base_connect(None)
     try:
@@ -106,13 +192,17 @@ def init_db() -> None:
                 id INT PRIMARY KEY AUTO_INCREMENT,
                 project_id INT NOT NULL,
                 title VARCHAR(255) NOT NULL,
+                group_title VARCHAR(255) NOT NULL DEFAULT '默认卷',
                 content MEDIUMTEXT NOT NULL,
+                sort_order INT NOT NULL DEFAULT 0,
                 version INT NOT NULL DEFAULT 1,
                 updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_chapters_project_title(project_id, title)
+                INDEX idx_chapters_project_title(project_id, title),
+                INDEX idx_chapters_project_group_order(project_id, group_title, sort_order, id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
+        _ensure_chapter_hierarchy(c)
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS lore_items (

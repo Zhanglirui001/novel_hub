@@ -38,14 +38,23 @@ class PatchApplyPayload(BaseModel):
     patch_set_id: int
     accepted_ids: list[int]
     chapter_title: str = "未命名章节"
+    chapter_id: int | None = None
+    group_title: str = "默认卷"
 
 
 class ChapterSavePayload(BaseModel):
     project_id: int
     title: str
     content: str
-    # 传入即更新该章节，否则按 (project_id, title) 查找；找不到则插入新章。
+    group_title: str = "默认卷"
+    sort_order: int | None = None
+    # 传入即更新该章节，否则按 (project_id, group_title, title) 查找；找不到则插入新章。
     chapter_id: int | None = None
+
+
+class ChapterPlacementPayload(BaseModel):
+    group_title: str
+    sort_order: int | None = None
 
 
 class ChapterRenamePayload(BaseModel):

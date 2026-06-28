@@ -155,7 +155,15 @@ class GenerationService:
             },
         }
 
-    def apply_patch_set(self, patch_set_id: int, accepted_ids: list[int], chapter_title: str) -> dict:
+    def apply_patch_set(
+        self,
+        patch_set_id: int,
+        accepted_ids: list[int],
+        chapter_title: str,
+        chapter_id: int | None = None,
+        group_title: str = "默认卷",
+    ) -> dict:
+        group_title = group_title.strip() or "默认卷"
         with get_conn() as conn:
             c = conn.cursor()
             c.execute("SELECT * FROM patch_sets WHERE id = %s", (patch_set_id,))
@@ -167,10 +175,20 @@ class GenerationService:
             patch = json.loads(row["patch_json"])
             applied_text = self.patch_service.apply_patch(source, patch, accepted_ids)
 
-            c.execute(
-                "SELECT id, version FROM chapters WHERE project_id = %s AND title = %s ORDER BY id DESC LIMIT 1",
-                (project_id, chapter_title),
-            )
+            if chapter_id is not None:
+                c.execute(
+                    "SELECT id, version, group_title FROM chapters WHERE id = %s AND project_id = %s",
+                    (chapter_id, project_id),
+                )
+            else:
+                c.execute(
+                    """
+                    SELECT id, version, group_title FROM chapters
+                    WHERE project_id = %s AND group_title = %s AND title = %s
+                    ORDER BY id DESC LIMIT 1
+                    """,
+                    (project_id, group_title, chapter_title),
+                )
             old = c.fetchone()
             now = utc_now()
             if old:
@@ -179,11 +197,20 @@ class GenerationService:
                     (applied_text, old["version"] + 1, now, old["id"]),
                 )
                 chapter_id = old["id"]
+                group_title = old["group_title"]
                 version = old["version"] + 1
             else:
                 c.execute(
-                    "INSERT INTO chapters (project_id, title, content, version, updated_at) VALUES (%s, %s, %s, %s, %s)",
-                    (project_id, chapter_title, applied_text, 1, now),
+                    "SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM chapters WHERE project_id = %s AND group_title = %s",
+                    (project_id, group_title),
+                )
+                sort_order = c.fetchone()["next_order"]
+                c.execute(
+                    """
+                    INSERT INTO chapters (project_id, title, group_title, content, sort_order, version, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (project_id, chapter_title, group_title, applied_text, sort_order, 1, now),
                 )
                 chapter_id = c.lastrowid
                 version = 1
@@ -206,6 +233,7 @@ class GenerationService:
         return {
             "project_id": project_id,
             "chapter_id": chapter_id,
+            "group_title": group_title,
             "version": version,
             "applied_text": applied_text,
         }

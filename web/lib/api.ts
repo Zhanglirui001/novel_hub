@@ -102,6 +102,21 @@ export const api = {
     );
   },
 
+  moveChapter(
+    chapterId: number,
+    payload: { group_title: string; sort_order?: number | null },
+  ) {
+    return request<{
+      chapter_id: number;
+      group_title: string;
+      sort_order: number;
+      updated_at: string;
+    }>(`/chapters/${chapterId}/placement`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
   deleteChapter(chapterId: number) {
     return request<{ chapter_id: number; deleted: boolean }>(
       `/chapters/${chapterId}`,
@@ -174,6 +189,8 @@ export const api = {
     patch_set_id: number;
     accepted_ids: number[];
     chapter_title: string;
+    chapter_id?: number | null;
+    group_title?: string;
   }) {
     return request<PatchApplyResponse>("/patch/apply", {
       method: "POST",

@@ -103,15 +103,21 @@ export function useApplyPatch(projectId: number) {
       patchSetId,
       acceptedIds,
       chapterTitle,
+      chapterId,
+      groupTitle,
     }: {
       patchSetId: number;
       acceptedIds: number[];
       chapterTitle: string;
+      chapterId?: number | null;
+      groupTitle?: string;
     }) =>
       api.applyPatch({
         patch_set_id: patchSetId,
         accepted_ids: acceptedIds,
         chapter_title: chapterTitle,
+        chapter_id: chapterId,
+        group_title: groupTitle,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["chapters", projectId] });
@@ -135,6 +141,28 @@ export function useRenameChapter(projectId: number) {
   return useMutation({
     mutationFn: ({ chapterId, title }: { chapterId: number; title: string }) =>
       api.renameChapter(chapterId, title),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chapters", projectId] });
+    },
+  });
+}
+
+export function useMoveChapter(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      chapterId,
+      groupTitle,
+      sortOrder,
+    }: {
+      chapterId: number;
+      groupTitle: string;
+      sortOrder?: number | null;
+    }) =>
+      api.moveChapter(chapterId, {
+        group_title: groupTitle,
+        sort_order: sortOrder,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["chapters", projectId] });
     },

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import get_conn, init_db, utc_now
 from app.schemas import (
+    ChapterPlacementPayload,
     ChapterRenamePayload,
     ChapterSavePayload,
     ConsistencyPayload,
@@ -81,9 +82,9 @@ def list_chapters(project_id: int):
         c = conn.cursor()
         c.execute(
             """
-            SELECT id, title, version, updated_at
+            SELECT id, title, group_title, sort_order, version, updated_at
             FROM chapters WHERE project_id = %s
-            ORDER BY id ASC
+            ORDER BY group_title ASC, sort_order ASC, id ASC
             """,
             (project_id,),
         )
@@ -95,7 +96,7 @@ def get_chapter(chapter_id: int):
     with get_conn() as conn:
         c = conn.cursor()
         c.execute(
-            "SELECT id, project_id, title, content, version, updated_at FROM chapters WHERE id = %s",
+            "SELECT id, project_id, title, group_title, content, sort_order, version, updated_at FROM chapters WHERE id = %s",
             (chapter_id,),
         )
         row = c.fetchone()
@@ -108,22 +109,37 @@ def get_chapter(chapter_id: int):
 def save_chapter(payload: ChapterSavePayload):
     """直接保存正文（手动保存 / 自动保存通道，区别于 patch/apply）。"""
     now = utc_now()
+    group_title = payload.group_title.strip() or "默认卷"
     with get_conn() as conn:
         c = conn.cursor()
         target_id = payload.chapter_id
+        sort_order = payload.sort_order
         if target_id is None:
             c.execute(
-                "SELECT id, version FROM chapters WHERE project_id = %s AND title = %s ORDER BY id DESC LIMIT 1",
-                (payload.project_id, payload.title),
+                """
+                SELECT id, version FROM chapters
+                WHERE project_id = %s AND group_title = %s AND title = %s
+                ORDER BY id DESC LIMIT 1
+                """,
+                (payload.project_id, group_title, payload.title),
             )
             existing = c.fetchone()
             if existing:
                 target_id = existing["id"]
                 version = existing["version"] + 1
             else:
+                if sort_order is None:
+                    c.execute(
+                        "SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM chapters WHERE project_id = %s AND group_title = %s",
+                        (payload.project_id, group_title),
+                    )
+                    sort_order = c.fetchone()["next_order"]
                 c.execute(
-                    "INSERT INTO chapters (project_id, title, content, version, updated_at) VALUES (%s, %s, %s, %s, %s)",
-                    (payload.project_id, payload.title, payload.content, 1, now),
+                    """
+                    INSERT INTO chapters (project_id, title, group_title, content, sort_order, version, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (payload.project_id, payload.title, group_title, payload.content, sort_order, 1, now),
                 )
                 return {
                     "chapter_id": c.lastrowid,
@@ -132,15 +148,21 @@ def save_chapter(payload: ChapterSavePayload):
                     "created": True,
                 }
         else:
-            c.execute("SELECT version FROM chapters WHERE id = %s", (target_id,))
+            c.execute("SELECT version, sort_order FROM chapters WHERE id = %s", (target_id,))
             row = c.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail=f"chapter_id={target_id} 不存在")
             version = row["version"] + 1
+            if sort_order is None:
+                sort_order = row["sort_order"]
 
         c.execute(
-            "UPDATE chapters SET title = %s, content = %s, version = %s, updated_at = %s WHERE id = %s",
-            (payload.title, payload.content, version, now, target_id),
+            """
+            UPDATE chapters
+            SET title = %s, group_title = %s, content = %s, sort_order = %s, version = %s, updated_at = %s
+            WHERE id = %s
+            """,
+            (payload.title, group_title, payload.content, sort_order, version, now, target_id),
         )
         return {
             "chapter_id": target_id,
@@ -148,6 +170,35 @@ def save_chapter(payload: ChapterSavePayload):
             "updated_at": now,
             "created": False,
         }
+
+
+@app.patch("/chapters/{chapter_id}/placement")
+def move_chapter(chapter_id: int, payload: ChapterPlacementPayload):
+    group_title = payload.group_title.strip() or "默认卷"
+    now = utc_now()
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute("SELECT project_id, sort_order FROM chapters WHERE id = %s", (chapter_id,))
+        row = c.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"chapter_id={chapter_id} 不存在")
+        sort_order = payload.sort_order
+        if sort_order is None:
+            c.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM chapters WHERE project_id = %s AND group_title = %s",
+                (row["project_id"], group_title),
+            )
+            sort_order = c.fetchone()["next_order"]
+        c.execute(
+            "UPDATE chapters SET group_title = %s, sort_order = %s, updated_at = %s WHERE id = %s",
+            (group_title, sort_order, now, chapter_id),
+        )
+    return {
+        "chapter_id": chapter_id,
+        "group_title": group_title,
+        "sort_order": sort_order,
+        "updated_at": now,
+    }
 
 
 @app.patch("/chapters/{chapter_id}")
@@ -283,6 +334,8 @@ def apply_patch(payload: PatchApplyPayload):
             patch_set_id=payload.patch_set_id,
             accepted_ids=payload.accepted_ids,
             chapter_title=payload.chapter_title,
+            chapter_id=payload.chapter_id,
+            group_title=payload.group_title,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

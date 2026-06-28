@@ -13,6 +13,8 @@ export interface Project {
 export interface ChapterSummary {
   id: number;
   title: string;
+  group_title: string;
+  sort_order: number;
   version: number;
   updated_at: string;
 }
@@ -157,6 +159,7 @@ export interface InlineReviseResult {
 
 export interface PatchApplyResponse {
   chapter_id: number;
+  group_title?: string;
   version: number;
   applied_text: string;
 }
@@ -165,6 +168,8 @@ export interface ChapterSaveRequest {
   project_id: number;
   title: string;
   content: string;
+  group_title?: string;
+  sort_order?: number | null;
   chapter_id?: number | null;
 }
 

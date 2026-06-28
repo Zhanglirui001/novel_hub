@@ -7,6 +7,7 @@ import { useSaveChapter } from "@/lib/queries";
 import type { GenerationResult } from "@/lib/types";
 
 const AUTOSAVE_DEBOUNCE_MS = 5000;
+const DEFAULT_GROUP_TITLE = "默认卷";
 
 type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -44,9 +45,17 @@ interface WorkspaceState {
   // 章节标题
   chapterTitle: string;
   setChapterTitle: (v: string) => void;
+  // 章节所属卷/分组
+  chapterGroupTitle: string;
+  setChapterGroupTitle: (v: string) => void;
   // 当前载入的章节 id（null = 新章节草稿）
   activeChapterId: number | null;
-  loadChapter: (id: number | null, title: string, content: string) => void;
+  loadChapter: (
+    id: number | null,
+    title: string,
+    content: string,
+    groupTitle?: string,
+  ) => void;
   // 最近一次生成结果
   lastResult: GenerationResult | null;
   setLastResult: (r: GenerationResult | null) => void;
@@ -91,6 +100,7 @@ export function WorkspaceProvider({
 }) {
   const [draft, setDraft] = React.useState("");
   const [chapterTitle, setChapterTitle] = React.useState("第1章");
+  const [chapterGroupTitle, setChapterGroupTitle] = React.useState(DEFAULT_GROUP_TITLE);
   const [activeChapterId, setActiveChapterId] = React.useState<number | null>(null);
   const [lastResult, setLastResult] = React.useState<GenerationResult | null>(null);
   const [dockTab, setDockTab] = React.useState("create");
@@ -116,10 +126,12 @@ export function WorkspaceProvider({
   // 「刚 load」一段，防止 loadChapter 触发的 setState 被识别为 dirty。
   const draftRef = React.useRef(draft);
   const titleRef = React.useRef(chapterTitle);
+  const groupTitleRef = React.useRef(chapterGroupTitle);
   const chapterIdRef = React.useRef<number | null>(activeChapterId);
   const skipDirtyRef = React.useRef(false);
   React.useEffect(() => { draftRef.current = draft; }, [draft]);
   React.useEffect(() => { titleRef.current = chapterTitle; }, [chapterTitle]);
+  React.useEffect(() => { groupTitleRef.current = chapterGroupTitle; }, [chapterGroupTitle]);
   React.useEffect(() => { chapterIdRef.current = activeChapterId; }, [activeChapterId]);
 
   const clearRevise = React.useCallback(() => {
@@ -169,10 +181,16 @@ export function WorkspaceProvider({
   }, []);
 
   const loadChapter = React.useCallback(
-    (id: number | null, title: string, content: string) => {
+    (
+      id: number | null,
+      title: string,
+      content: string,
+      groupTitle = DEFAULT_GROUP_TITLE,
+    ) => {
       skipDirtyRef.current = true;
       setActiveChapterId(id);
       setChapterTitle(title);
+      setChapterGroupTitle(groupTitle.trim() || DEFAULT_GROUP_TITLE);
       setDraft(content);
       setLastResult(null);
       setSelection(null);
@@ -215,6 +233,7 @@ export function WorkspaceProvider({
         project_id: projectId,
         title,
         content,
+        group_title: groupTitleRef.current,
         chapter_id: chapterIdRef.current,
       });
       chapterIdRef.current = res.chapter_id;
@@ -234,7 +253,7 @@ export function WorkspaceProvider({
       return;
     }
     setSaveStatus((prev) => (prev === "saving" ? prev : "dirty"));
-  }, [draft, chapterTitle]);
+  }, [draft, chapterTitle, chapterGroupTitle]);
 
   // dirty + 自动保存开启 → 5s 去抖触发 saveNow
   React.useEffect(() => {
@@ -274,6 +293,8 @@ export function WorkspaceProvider({
     setDraft,
     chapterTitle,
     setChapterTitle,
+    chapterGroupTitle,
+    setChapterGroupTitle,
     activeChapterId,
     loadChapter,
     lastResult,

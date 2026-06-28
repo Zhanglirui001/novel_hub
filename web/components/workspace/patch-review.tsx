@@ -18,7 +18,14 @@ const opMeta: Record<PatchOp, { label: string; badge: "warning" | "success" | "d
 };
 
 export function PatchReview() {
-  const { projectId, lastResult, chapterTitle, loadChapter } = useWorkspace();
+  const {
+    projectId,
+    lastResult,
+    activeChapterId,
+    chapterTitle,
+    chapterGroupTitle,
+    loadChapter,
+  } = useWorkspace();
   const applyPatch = useApplyPatch(projectId);
   const [accepted, setAccepted] = React.useState<Set<number>>(new Set());
 
@@ -62,8 +69,15 @@ export function PatchReview() {
         patchSetId: lastResult.patch_set_id,
         acceptedIds: Array.from(accepted),
         chapterTitle,
+        chapterId: activeChapterId,
+        groupTitle: chapterGroupTitle,
       });
-      loadChapter(res.chapter_id, chapterTitle, res.applied_text);
+      loadChapter(
+        res.chapter_id,
+        chapterTitle,
+        res.applied_text,
+        res.group_title ?? chapterGroupTitle,
+      );
       toast.success(`已保存《${chapterTitle}》v${res.version}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "应用补丁失败");

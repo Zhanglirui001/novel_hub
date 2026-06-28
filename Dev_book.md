@@ -619,5 +619,21 @@ lop:
 
 
 
+> 请问左侧章节的格式能不能再加一层层级，请在前后端、包括表结构都做好适配；这样才可以适配长篇小说大量篇幅的管理。
+
+已完成固定两层 `卷/分组 -> 章节` 适配。
+
+- 后端：在 [app/database.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/database.py) 为 `chapters` 增加 `group_title/sort_order`、旧库自动迁移和索引。
+- API：在 [app/api.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/api.py) 支持分组列表、保存、详情返回、移动章节到卷/分组。
+- 补丁链路：在 [app/services/generation_service.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/generation_service.py) 改为优先按 `chapter_id` 应用，避免跨卷同名章节误写。
+- 前端：在 [web/components/workspace/chapter-rail.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/chapter-rail.tsx) 改成卷标题 + 缩进章节，并加“新建卷/分组”“移动到分组”。
+- 状态/API 类型：同步更新 [web/components/workspace/workspace-context.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/workspace-context.tsx)、[web/lib/types.ts](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/types.ts)、[web/lib/api.ts](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/api.ts)、[web/lib/queries.ts](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/queries.ts)、[web/components/workspace/patch-review.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/patch-review.tsx)。
+
+
+
+
+
+
+
 ### 深度功能开发
 
