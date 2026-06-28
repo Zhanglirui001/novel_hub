@@ -1,4 +1,5 @@
 import type {
+  BackupInfo,
   Chapter,
   ChapterSaveRequest,
   ChapterSaveResponse,
@@ -78,6 +79,33 @@ export const api = {
     return request<ChapterSaveResponse>("/chapters", {
       method: "PUT",
       body: JSON.stringify(payload),
+    });
+  },
+
+  renameChapter(chapterId: number, title: string) {
+    return request<{ chapter_id: number; title: string; updated_at: string }>(
+      `/chapters/${chapterId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ title }),
+      },
+    );
+  },
+
+  deleteChapter(chapterId: number) {
+    return request<{ chapter_id: number; deleted: boolean }>(
+      `/chapters/${chapterId}`,
+      { method: "DELETE" },
+    );
+  },
+
+  getBackupStatus(chapterId: number) {
+    return request<BackupInfo>(`/chapters/${chapterId}/backup`);
+  },
+
+  backupChapter(chapterId: number) {
+    return request<BackupInfo>(`/chapters/${chapterId}/backup`, {
+      method: "POST",
     });
   },
 

@@ -460,17 +460,107 @@ lop:
 
 
 
+> 我希望增加一个选中一段文字，然后支持使用ai进行分析和人工输入批注后让ai给出修改的功能。这样修改会更有针对性。
+
+后端
+
+- `app/schemas.py` — 新增 `InlineAnalyzePayload` / `InlineRevisePayload`
+- `app/api.py` — 新增 `POST /draft/analyze`、`POST /draft/revise`
+- `app/services/generation_service.py` — 新增 `analyze_segment()` / `revise_segment()`，内置 stub 兜底（无 API key 也能跑）
+
+前端
+
+- `web/lib/types.ts` — `InlineAnalyze/Revise Request/Result` 四个类型
+- `web/lib/api.ts` + `web/lib/queries.ts` — `analyzeSelection`、`reviseSelection` + 两个 hook
+- `web/components/workspace/workspace-context.tsx` — `selection`、`setSelection`、`replaceRange`、`registerEditor`
+- `web/components/workspace/editor-pane.tsx` — textarea ref + `onSelect/MouseUp/KeyUp` 同步选区，选中时浮出「AI 分析选段」按钮
+- `web/components/workspace/inline-revise-panel.tsx` — 新建，三段式：选段快照 / AI 分析 / 我的批注 → 生成修改 → 采纳并替换
+- `web/components/workspace/assistant-dock.tsx` — 新增「批注」Tab（7 列）
+
+**用法**：编辑器选中一段 → 浮出按钮跳转「批注」Tab → 点「开始分析」拿到 AI 解读 → 在批注框写诉求（可空）→ 「按分析与批注生成修改」→ 满意点「采纳并替换选段」，光标会落在替换后末尾。前后各 300 字会作为上下文随选段一起送给模型，避免脱离场景。
 
 
 
+> 左侧新增章节的功能似乎并不会在数据库中插入一条新的数据，也就说并没有新增新的一章；请检查一下
+
+**修复要点**
+
+`chapter-rail.tsx:27-46` — 点击「+」立即调 `PUT /chapters`（`chapter_id=null` + 空 content）真实写一行入库，再 `loadChapter` 进编辑器，并 invalidate `chapters` query 让侧栏自动刷新。
+
+**两个隐藏问题一并修了**
+
+1. **原来的「点 + 不入库」**：之前只是前端清空状态，依赖之后输入文字 + 5 秒去抖才落盘——不输字或快速切走就丢章。
+2. **标题撞车覆盖旧章**：`saveNow` 走 `(project_id, title)` 上插。如果 `chapters.length+1` 算出的标题恰好等于已有章（删除过旧章后顺序错位），原逻辑会更新那条而不是新增。新逻辑会 `while (titles.has(...)) n++` 找出唯一的「第N章」。
 
 
 
+> 为什么响应这么慢，点击新建章节很久后才在前端显示新创建的章节
 
+之前流程：点击 → `PUT /chapters`（约几十到几百 ms，含 PyMySQL 新建连接）→ **invalidate 触发 `GET /chapters` 重拉** → 列表才更新。第二次往返完全没必要——服务器返回里已经有 `chapter_id / version / updated_at`，本地拼一行 `ChapterSummary` 写进 react-query 缓存就够了。
 
+**改动**：`chapter-rail.tsx:46-58` 把 `invalidateQueries` 换成 `setQueryData`，列表立刻多出新章，不等第二次网络往返。
 
+如果第一次请求本身也明显慢（>500ms），那是后端 config.py / database.py 每次 `get_conn()` 新建 MySQL 连接的老问题（架构文档里早标注过「无连接池」），这一处不是 UI 层能解决的。要不要我顺手把 `get_conn` 换成连接池？大概十来行改动，所有接口都会受益。
 
+> 创建的章节能不能支持删除和改名？
 
+后端
+
+- `app/schemas.py` — `ChapterRenamePayload`
+- `app/api.py` — `PATCH /chapters/{id}` 改 title、`DELETE /chapters/{id}` 删除一行（关联日志/补丁不删，保留追溯链路）
+
+前端
+
+- `web/lib/api.ts` + `web/lib/queries.ts` — `renameChapter` / `deleteChapter` + `useRenameChapter` / `useDeleteChapter`
+- `web/components/workspace/chapter-rail.tsx` — 行内 hover 浮出铅笔/垃圾桶；都走乐观更新（先改本地缓存，失败回滚），列表无网络等待
+
+**交互**
+
+- 鼠标移到章节行 → 右侧浮出 ✏️ 🗑
+- 改名走 `prompt`，删除走 `confirm`，避免引入 dialog 组件膨胀
+- 改名命中当前打开的章节，会重新拉取并刷新编辑器标题
+- 删除命中当前打开的章节，编辑器回到「新建草稿」态
+
+简单做法是 prompt + confirm 而不是内联 input / shadcn dialog——交互闭环最短。要换成更精致的浮层告诉我。
+
+> 能不能在项目目录下新建一个文件夹，作为正文的备份，使用.txt文件将每一章的文本保存下来，前端增加相应的ui，可以将当前章节备份，并且可以看到是否已经备份过，最新内容是否已经备份。
+
+**目录与命名**
+
+- 备份根：`<repo>/backups/`，可被 `BACKUP_DIR` 环境变量覆盖
+- 文件路径：`backups/<project_id>__<project_name_safe>/<chapter_id>__<title_safe>.txt`
+- 同名章节冲突天然不存在（按 chapter_id 去重）；项目名/标题里非 ascii/中文保留，剥掉 `\\/:*?"<>|` 这些 Windows 非法字符
+- 加进 `.gitignore`，不入版本库
+
+**"是否最新已备份" 怎么判定**
+
+- 备份时把当前章节的 `version + content_hash`（sha1 短前缀）写入文件首行作为元数据
+
+- 前端拿章节列表后，用一个新接口
+
+  ```
+  GET /chapters/{id}/backup
+  ```
+
+  询问后端：
+
+  - `not_backed_up`：从未备份
+  - `up_to_date`：当前 DB version 与备份元数据一致
+  - `stale`：备份过，但章节有更新
+
+- UI 用三种态分别显示：⚪ 未备份 / ✅ 已备份 / 🟡 已过期
+
+**后端**
+
+- `app/services/backup_service.py`（新）— `backup_chapter()` / `get_status()` / `read_backup()`
+- `app/api.py` — `POST /chapters/{id}/backup`、`GET /chapters/{id}/backup`
+- `app/schemas.py` — 不需要新 payload（路径参数即可）
+
+**前端**
+
+- `web/lib/api.ts` + `queries.ts` — `backupChapter` + `useBackupStatus(id)` + `useBackupChapter`
+- `editor-pane.tsx` — 状态条加一个备份指示徽标 + 「备份此章」按钮（点了之后状态变成 ✅）
+- 章节切换时自动查一次状态；保存成功后状态会自动变 stale（因为 version+1）
 
 
 

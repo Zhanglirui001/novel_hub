@@ -1,11 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Save, Sparkles } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Save, Sparkles, HardDriveDownload } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { countChars } from "@/lib/utils";
+import { useBackupChapter, useBackupStatus } from "@/lib/queries";
+import { countChars, cn } from "@/lib/utils";
 import { useWorkspace } from "./workspace-context";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -43,6 +46,32 @@ export function EditorPane() {
   } = useWorkspace();
 
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+
+  const queryClient = useQueryClient();
+  const backupStatus = useBackupStatus(activeChapterId);
+  const backupMutation = useBackupChapter();
+
+  // 章节有保存动作 → 备份状态可能变 stale,主动重拉一次。
+  React.useEffect(() => {
+    if (saveStatus === "saved" && activeChapterId !== null) {
+      queryClient.invalidateQueries({
+        queryKey: ["backup-status", activeChapterId],
+      });
+    }
+  }, [saveStatus, activeChapterId, queryClient]);
+
+  async function handleBackup() {
+    if (activeChapterId === null) {
+      toast.error("当前章节尚未保存到数据库,无法备份");
+      return;
+    }
+    try {
+      await backupMutation.mutateAsync(activeChapterId);
+      toast.success("已备份到本地 .txt");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "备份失败");
+    }
+  }
 
   const setRef = React.useCallback(
     (el: HTMLTextAreaElement | null) => {
@@ -101,6 +130,20 @@ export function EditorPane() {
           <Save className="h-4 w-4" />
           保存
         </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleBackup}
+          disabled={
+            activeChapterId === null ||
+            backupMutation.isPending ||
+            backupStatus.data?.status === "up_to_date"
+          }
+          title={backupTitle(backupStatus.data?.status)}
+        >
+          <HardDriveDownload className="h-4 w-4" />
+          {backupMutation.isPending ? "备份中…" : "备份"}
+        </Button>
       </div>
 
       {/* 正文：限定阅读栏宽，杂志沉浸感 */}
@@ -147,11 +190,58 @@ export function EditorPane() {
           {lastSavedAt && saveStatus === "saved" && (
             <span className="text-muted-foreground/70">{lastSavedAt}</span>
           )}
-          <span>
-            {activeChapterId ? `章节 #${activeChapterId}` : "新章节"}
+          {activeChapterId !== null && backupStatus.data && (
+            <BackupBadge
+              status={backupStatus.data.status}
+              backedUpAt={backupStatus.data.backed_up_at ?? null}
+            />
+          )}
+          <span className="max-w-[12rem] truncate" title={chapterTitle}>
+            {activeChapterId ? chapterTitle : "新章节"}
           </span>
         </span>
       </div>
     </div>
   );
+}
+
+const BACKUP_BADGE_TONE: Record<string, string> = {
+  not_backed_up: "text-muted-foreground bg-muted/40",
+  up_to_date: "text-emerald-700 bg-emerald-500/10 dark:text-emerald-400",
+  stale: "text-amber-700 bg-amber-500/15 dark:text-amber-400",
+};
+
+const BACKUP_BADGE_LABEL: Record<string, string> = {
+  not_backed_up: "未备份",
+  up_to_date: "已备份",
+  stale: "待重新备份",
+};
+
+function BackupBadge({
+  status,
+  backedUpAt,
+}: {
+  status: string;
+  backedUpAt: string | null;
+}) {
+  const label = BACKUP_BADGE_LABEL[status] ?? status;
+  const title = backedUpAt ? `上次备份 ${backedUpAt}` : "尚未备份过这一章";
+  return (
+    <span
+      title={title}
+      className={cn(
+        "rounded-full px-2 py-0.5 text-[0.7rem] font-medium",
+        BACKUP_BADGE_TONE[status],
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function backupTitle(status: string | undefined) {
+  if (status === "up_to_date") return "已备份且与当前内容一致";
+  if (status === "stale") return "章节已更新,点击重新备份";
+  if (status === "not_backed_up") return "尚未备份,点击生成 .txt";
+  return "备份当前章节到 .txt";
 }

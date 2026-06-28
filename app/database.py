@@ -1,4 +1,5 @@
-﻿from contextlib import contextmanager
+﻿import queue
+from contextlib import contextmanager
 from datetime import datetime
 
 import pymysql
@@ -24,14 +25,56 @@ def _base_connect(db: str | None = None):
     )
 
 
+# 简易连接池:queue.Queue 本身线程安全;空了就临时新建,池满时关掉多余连接。
+# 没引入新依赖(不需要 DBUtils),量级足够覆盖单机日更场景。
+_POOL_SIZE = 10
+_pool: "queue.Queue" = queue.Queue(maxsize=_POOL_SIZE)
+
+
+def _acquire():
+    try:
+        conn = _pool.get_nowait()
+    except queue.Empty:
+        return _base_connect(config.settings.mysql_database)
+    try:
+        conn.ping(reconnect=True)
+        return conn
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return _base_connect(config.settings.mysql_database)
+
+
+def _release(conn) -> None:
+    try:
+        _pool.put_nowait(conn)
+    except queue.Full:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 @contextmanager
 def get_conn():
-    conn = _base_connect(config.settings.mysql_database)
+    conn = _acquire()
     try:
         yield conn
         conn.commit()
-    finally:
-        conn.close()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+        raise
+    else:
+        _release(conn)
 
 
 def init_db() -> None:

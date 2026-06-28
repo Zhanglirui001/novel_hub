@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import get_conn, init_db, utc_now
 from app.schemas import (
+    ChapterRenamePayload,
     ChapterSavePayload,
     ConsistencyPayload,
     DraftPayload,
@@ -17,7 +18,7 @@ from app.schemas import (
     StyleProfilePayload,
 )
 from app.services import ConsistencyGuard, GenerationService, LoreService, StyleService
-from app.services import settings_service
+from app.services import backup_service, settings_service
 
 init_db()
 app = FastAPI(title="Novel Hub API", version="0.1.0")
@@ -147,6 +148,51 @@ def save_chapter(payload: ChapterSavePayload):
             "updated_at": now,
             "created": False,
         }
+
+
+@app.patch("/chapters/{chapter_id}")
+def rename_chapter(chapter_id: int, payload: ChapterRenamePayload):
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title 不能为空")
+    now = utc_now()
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id FROM chapters WHERE id = %s", (chapter_id,))
+        if not c.fetchone():
+            raise HTTPException(status_code=404, detail=f"chapter_id={chapter_id} 不存在")
+        c.execute(
+            "UPDATE chapters SET title = %s, updated_at = %s WHERE id = %s",
+            (title, now, chapter_id),
+        )
+    return {"chapter_id": chapter_id, "title": title, "updated_at": now}
+
+
+@app.delete("/chapters/{chapter_id}")
+def delete_chapter(chapter_id: int):
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id FROM chapters WHERE id = %s", (chapter_id,))
+        if not c.fetchone():
+            raise HTTPException(status_code=404, detail=f"chapter_id={chapter_id} 不存在")
+        c.execute("DELETE FROM chapters WHERE id = %s", (chapter_id,))
+    return {"chapter_id": chapter_id, "deleted": True}
+
+
+@app.get("/chapters/{chapter_id}/backup")
+def get_chapter_backup_status(chapter_id: int):
+    try:
+        return backup_service.get_status(chapter_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/chapters/{chapter_id}/backup")
+def create_chapter_backup(chapter_id: int):
+    try:
+        return backup_service.backup_chapter(chapter_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/lore/import")

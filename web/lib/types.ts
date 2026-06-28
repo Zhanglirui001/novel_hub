@@ -175,6 +175,17 @@ export interface ChapterSaveResponse {
   created: boolean;
 }
 
+export type BackupStatus = "not_backed_up" | "up_to_date" | "stale";
+
+export interface BackupInfo {
+  status: BackupStatus;
+  path?: string;
+  version: number;
+  backed_up_version?: number | null;
+  backed_up_at?: string | null;
+  sha1?: string;
+}
+
 export interface TimelineEvent {
   label: string;
   source: string;

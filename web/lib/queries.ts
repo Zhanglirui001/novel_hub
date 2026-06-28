@@ -130,6 +130,46 @@ export function useSaveChapter(projectId: number) {
   });
 }
 
+export function useRenameChapter(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ chapterId, title }: { chapterId: number; title: string }) =>
+      api.renameChapter(chapterId, title),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chapters", projectId] });
+    },
+  });
+}
+
+export function useDeleteChapter(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (chapterId: number) => api.deleteChapter(chapterId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chapters", projectId] });
+    },
+  });
+}
+
+export function useBackupStatus(chapterId: number | null) {
+  return useQuery({
+    queryKey: ["backup-status", chapterId],
+    queryFn: () => api.getBackupStatus(chapterId as number),
+    enabled: chapterId !== null && Number.isFinite(chapterId),
+    staleTime: 0,
+  });
+}
+
+export function useBackupChapter() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (chapterId: number) => api.backupChapter(chapterId),
+    onSuccess: (data, chapterId) => {
+      queryClient.setQueryData(["backup-status", chapterId], data);
+    },
+  });
+}
+
 export function useTimeline(projectId: number) {
   return useQuery({
     queryKey: ["timeline", projectId],

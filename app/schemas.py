@@ -48,6 +48,10 @@ class ChapterSavePayload(BaseModel):
     chapter_id: int | None = None
 
 
+class ChapterRenamePayload(BaseModel):
+    title: str
+
+
 class ConsistencyPayload(BaseModel):
     project_id: int
     text: str
