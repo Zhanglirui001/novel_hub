@@ -150,11 +150,11 @@ export function EditorPane() {
           {previewing && reviseTarget ? (
             // 原地预览：前后文只读，中间嵌入 diff 卡。
             <div className="prose-editor min-h-[60vh] w-full whitespace-pre-wrap break-words">
-              <span className="text-foreground/60">
+              <span className="text-foreground/75">
                 {draft.slice(0, reviseTarget.start)}
               </span>
               <InlineDiffCard />
-              <span className="text-foreground/60">
+              <span className="text-foreground/75">
                 {draft.slice(reviseTarget.end)}
               </span>
             </div>

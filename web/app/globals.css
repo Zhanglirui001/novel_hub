@@ -85,115 +85,115 @@
     --ring: 243 80% 68%;
   }
 
-  /* 纸张 / 米黄护眼：暖白底 + 棕墨字 + 赭石 accent */
+  /* 纸张 / 米黄护眼：浅纸底 + 深褐正文 + 陶土 accent */
   .sepia {
-    --background: 40 38% 94%; /* #F1E9D8 暖纸 */
-    --foreground: 30 25% 18%; /* 棕墨 */
+    --background: 43 48% 91%; /* #EDE1C6 浅纸底 */
+    --foreground: 24 34% 10%; /* 深褐正文 */
 
-    --card: 42 44% 96%;
-    --card-foreground: 30 25% 18%;
+    --card: 43 56% 96%;
+    --card-foreground: 24 34% 10%;
 
-    --popover: 42 44% 96%;
-    --popover-foreground: 30 25% 18%;
+    --popover: 43 56% 96%;
+    --popover-foreground: 24 34% 10%;
 
-    --primary: 22 60% 45%; /* 赭石 accent */
-    --primary-foreground: 42 44% 97%;
+    --primary: 16 62% 36%; /* 陶土棕 accent */
+    --primary-foreground: 43 60% 97%;
 
-    --secondary: 40 30% 88%;
-    --secondary-foreground: 30 25% 20%;
+    --secondary: 38 36% 79%;
+    --secondary-foreground: 24 32% 12%;
 
-    --muted: 40 28% 88%;
-    --muted-foreground: 32 16% 42%;
+    --muted: 40 32% 82%;
+    --muted-foreground: 27 24% 28%;
 
-    --accent: 36 45% 86%;
-    --accent-foreground: 22 60% 35%;
+    --accent: 28 52% 76%;
+    --accent-foreground: 16 58% 24%;
 
-    --destructive: 0 65% 48%;
-    --destructive-foreground: 42 44% 97%;
+    --destructive: 2 64% 40%;
+    --destructive-foreground: 43 60% 97%;
 
-    --warning: 32 80% 44%;
-    --warning-foreground: 40 44% 97%;
+    --warning: 34 78% 37%;
+    --warning-foreground: 43 60% 97%;
 
-    --success: 130 40% 38%;
-    --success-foreground: 42 44% 97%;
+    --success: 118 36% 29%;
+    --success-foreground: 43 60% 97%;
 
-    --border: 38 26% 82%;
-    --input: 38 26% 82%;
-    --ring: 22 60% 45%;
+    --border: 35 28% 66%;
+    --input: 35 28% 69%;
+    --ring: 16 62% 36%;
   }
 
-  /* 绿豆沙 / 护眼绿：柔和青绿底 + 深灰绿字 */
+  /* 绿豆沙 / 护眼绿：灰青豆沙底 + 松针文字 + 玉绿 accent */
   .green {
-    --background: 92 24% 86%; /* #CCE8CF 豆沙绿 */
-    --foreground: 150 18% 16%;
+    --background: 112 27% 84%; /* #CBE2C5 灰青豆沙 */
+    --foreground: 154 25% 14%;
 
-    --card: 95 30% 90%;
-    --card-foreground: 150 18% 16%;
+    --card: 102 34% 90%;
+    --card-foreground: 154 25% 14%;
 
-    --popover: 95 30% 90%;
-    --popover-foreground: 150 18% 16%;
+    --popover: 102 34% 90%;
+    --popover-foreground: 154 25% 14%;
 
-    --primary: 158 45% 34%; /* 松绿 accent */
-    --primary-foreground: 95 30% 96%;
+    --primary: 164 46% 31%; /* 玉绿 accent */
+    --primary-foreground: 106 40% 95%;
 
-    --secondary: 92 22% 80%;
-    --secondary-foreground: 150 18% 18%;
+    --secondary: 96 24% 78%;
+    --secondary-foreground: 154 24% 17%;
 
-    --muted: 92 20% 80%;
-    --muted-foreground: 150 12% 38%;
+    --muted: 104 22% 79%;
+    --muted-foreground: 150 13% 34%;
 
-    --accent: 120 28% 80%;
-    --accent-foreground: 158 45% 28%;
+    --accent: 144 28% 76%;
+    --accent-foreground: 164 43% 25%;
 
-    --destructive: 0 62% 46%;
-    --destructive-foreground: 95 30% 96%;
+    --destructive: 2 58% 44%;
+    --destructive-foreground: 106 40% 95%;
 
-    --warning: 36 78% 42%;
-    --warning-foreground: 95 30% 96%;
+    --warning: 39 72% 40%;
+    --warning-foreground: 106 40% 95%;
 
-    --success: 150 50% 34%;
-    --success-foreground: 95 30% 96%;
+    --success: 150 48% 32%;
+    --success-foreground: 106 40% 95%;
 
-    --border: 92 18% 74%;
-    --input: 92 18% 74%;
-    --ring: 158 45% 34%;
+    --border: 102 20% 69%;
+    --input: 102 20% 71%;
+    --ring: 164 46% 31%;
   }
 
-  /* 夜蓝 / 深空蓝：低蓝光的深靛底，比纯黑更柔和 */
+  /* 夜蓝 / 深空蓝：墨蓝底 + 雾蓝文字 + 星蓝 accent */
   .night {
-    --background: 222 38% 11%; /* #111A2B 深夜蓝 */
-    --foreground: 215 30% 88%;
+    --background: 224 42% 9%; /* #0D1524 墨蓝夜幕 */
+    --foreground: 214 32% 88%;
 
-    --card: 221 34% 15%;
-    --card-foreground: 215 30% 88%;
+    --card: 222 36% 13%;
+    --card-foreground: 214 32% 88%;
 
-    --popover: 221 34% 15%;
-    --popover-foreground: 215 30% 88%;
+    --popover: 222 36% 13%;
+    --popover-foreground: 214 32% 88%;
 
-    --primary: 205 80% 62%; /* 天青 accent */
-    --primary-foreground: 222 38% 11%;
+    --primary: 199 78% 58%; /* 星蓝 accent */
+    --primary-foreground: 224 42% 9%;
 
-    --secondary: 220 26% 20%;
-    --secondary-foreground: 215 30% 88%;
+    --secondary: 220 30% 18%;
+    --secondary-foreground: 214 32% 88%;
 
-    --muted: 220 26% 20%;
-    --muted-foreground: 214 18% 60%;
+    --muted: 219 28% 18%;
+    --muted-foreground: 215 19% 64%;
 
-    --accent: 210 45% 26%;
-    --accent-foreground: 205 80% 82%;
+    --accent: 216 40% 24%;
+    --accent-foreground: 198 82% 82%;
 
-    --destructive: 0 60% 52%;
+    --destructive: 0 58% 53%;
     --destructive-foreground: 0 0% 100%;
 
-    --warning: 38 88% 56%;
-    --warning-foreground: 222 38% 11%;
+    --warning: 39 84% 55%;
+    --warning-foreground: 224 42% 9%;
 
-    --success: 152 55% 48%;
-    --success-foreground: 222 38% 11%;
+    --success: 154 52% 45%;
+    --success-foreground: 224 42% 9%;
 
-    --border: 220 24% 24%;
-    --input: 220 24% 26%;
-    --ring: 205 80% 62%;
+    --border: 218 25% 25%;
+    --input: 218 25% 27%;
+    --ring: 199 78% 58%;
   }
 }
 
@@ -210,8 +210,8 @@
 /* 杂志感工具类 */
 @layer components {
   .prose-editor {
-    @apply font-serif text-[1.075rem] leading-[1.95] text-foreground/90;
-    letter-spacing: 0.01em;
+    @apply font-serif text-[1.0875rem] font-medium leading-[1.95] text-foreground;
+    letter-spacing: 0.012em;
   }
   .display-title {
     @apply font-serif font-semibold tracking-tight;

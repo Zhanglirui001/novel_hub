@@ -8,6 +8,7 @@ import type { GenerationResult } from "@/lib/types";
 
 const AUTOSAVE_DEBOUNCE_MS = 5000;
 const DEFAULT_GROUP_TITLE = "默认卷";
+const MAX_CHAPTER_TITLE_LENGTH = 255;
 
 type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -222,7 +223,13 @@ export function WorkspaceProvider({
 
   const saveNow = React.useCallback(async () => {
     const title = titleRef.current.trim() || "未命名章节";
+    const groupTitle = groupTitleRef.current.trim() || DEFAULT_GROUP_TITLE;
     const content = draftRef.current;
+    if (title.length > MAX_CHAPTER_TITLE_LENGTH || groupTitle.length > MAX_CHAPTER_TITLE_LENGTH) {
+      setSaveStatus("error");
+      toast.error("章节标题或分组名称不能超过 255 个字符");
+      return;
+    }
     if (!content.trim()) {
       // 空白稿不落盘，避免误生成空章。
       return;
@@ -233,7 +240,7 @@ export function WorkspaceProvider({
         project_id: projectId,
         title,
         content,
-        group_title: groupTitleRef.current,
+        group_title: groupTitle,
         chapter_id: chapterIdRef.current,
       });
       chapterIdRef.current = res.chapter_id;

@@ -109,7 +109,12 @@ def get_chapter(chapter_id: int):
 def save_chapter(payload: ChapterSavePayload):
     """直接保存正文（手动保存 / 自动保存通道，区别于 patch/apply）。"""
     now = utc_now()
+    title = payload.title.strip() or "未命名章节"
     group_title = payload.group_title.strip() or "默认卷"
+    if len(title) > 255:
+        raise HTTPException(status_code=400, detail="title 不能超过 255 个字符")
+    if len(group_title) > 255:
+        raise HTTPException(status_code=400, detail="group_title 不能超过 255 个字符")
     with get_conn() as conn:
         c = conn.cursor()
         target_id = payload.chapter_id
@@ -121,7 +126,7 @@ def save_chapter(payload: ChapterSavePayload):
                 WHERE project_id = %s AND group_title = %s AND title = %s
                 ORDER BY id DESC LIMIT 1
                 """,
-                (payload.project_id, group_title, payload.title),
+                (payload.project_id, group_title, title),
             )
             existing = c.fetchone()
             if existing:
@@ -139,7 +144,7 @@ def save_chapter(payload: ChapterSavePayload):
                     INSERT INTO chapters (project_id, title, group_title, content, sort_order, version, updated_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (payload.project_id, payload.title, group_title, payload.content, sort_order, 1, now),
+                    (payload.project_id, title, group_title, payload.content, sort_order, 1, now),
                 )
                 return {
                     "chapter_id": c.lastrowid,
@@ -148,10 +153,15 @@ def save_chapter(payload: ChapterSavePayload):
                     "created": True,
                 }
         else:
-            c.execute("SELECT version, sort_order FROM chapters WHERE id = %s", (target_id,))
+            c.execute(
+                "SELECT project_id, version, sort_order FROM chapters WHERE id = %s",
+                (target_id,),
+            )
             row = c.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail=f"chapter_id={target_id} 不存在")
+            if row["project_id"] != payload.project_id:
+                raise HTTPException(status_code=400, detail="chapter_id 不属于当前 project_id")
             version = row["version"] + 1
             if sort_order is None:
                 sort_order = row["sort_order"]
@@ -162,7 +172,7 @@ def save_chapter(payload: ChapterSavePayload):
             SET title = %s, group_title = %s, content = %s, sort_order = %s, version = %s, updated_at = %s
             WHERE id = %s
             """,
-            (payload.title, group_title, payload.content, sort_order, version, now, target_id),
+            (title, group_title, payload.content, sort_order, version, now, target_id),
         )
         return {
             "chapter_id": target_id,

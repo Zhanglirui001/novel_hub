@@ -43,23 +43,23 @@ const THEMES: ThemeOption[] = [
   {
     value: "sepia",
     label: "纸张",
-    hint: "暖米黄 · 久读护眼",
+    hint: "浅纸底 · 深褐正文",
     icon: BookOpen,
-    swatch: { bg: "#F1E9D8", fg: "#b35a2b" },
+    swatch: { bg: "#EDE1C6", fg: "#6d341f" },
   },
   {
     value: "green",
     label: "绿豆沙",
-    hint: "柔和绿 · 护眼",
+    hint: "灰青豆沙 · 松针文字",
     icon: Leaf,
-    swatch: { bg: "#CCE8CF", fg: "#2f7a59" },
+    swatch: { bg: "#CBE2C5", fg: "#2b735f" },
   },
   {
     value: "night",
     label: "夜蓝",
-    hint: "深空蓝 · 低蓝光",
+    hint: "墨蓝夜幕 · 星蓝高光",
     icon: Stars,
-    swatch: { bg: "#111A2B", fg: "#4aa3e0" },
+    swatch: { bg: "#0D1524", fg: "#3ba8d9" },
   },
 ];
 

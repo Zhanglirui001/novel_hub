@@ -44,9 +44,9 @@ class PatchApplyPayload(BaseModel):
 
 class ChapterSavePayload(BaseModel):
     project_id: int
-    title: str
+    title: str = Field(min_length=1, max_length=255)
     content: str
-    group_title: str = "默认卷"
+    group_title: str = Field(default="默认卷", max_length=255)
     sort_order: int | None = None
     # 传入即更新该章节，否则按 (project_id, group_title, title) 查找；找不到则插入新章。
     chapter_id: int | None = None
