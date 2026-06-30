@@ -225,3 +225,56 @@ export interface LlmTestResult {
   provider: string;
   message: string;
 }
+
+export type ChatRole = "user" | "assistant";
+
+export interface ChatSessionSummary {
+  id: number;
+  project_id: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  last_message_preview: string;
+}
+
+export interface ChatSessionMessageContext {
+  chapterTitle: string;
+  chapterGroupTitle: string;
+  activeChapterId: number | null;
+  hasSelection: boolean;
+  selectionText?: string | null;
+}
+
+export interface ChatSessionMessage {
+  id: number;
+  session_id: number;
+  role: ChatRole;
+  content: string;
+  context: ChatSessionMessageContext;
+  created_at: string;
+}
+
+export interface ChatSessionCreateRequest {
+  project_id: number;
+  title?: string | null;
+}
+
+export interface ChatMessageCreateRequest {
+  content: string;
+  chapter_title: string;
+  chapter_group_title: string;
+  active_chapter_id?: number | null;
+  selection_text?: string | null;
+}
+
+export interface ChatMessageCreateResponse {
+  session: ChatSessionSummary;
+  messages: ChatSessionMessage[];
+}
+
+export interface ChatSessionClearResponse {
+  session_id: number;
+  cleared: boolean;
+  updated_at: string;
+}

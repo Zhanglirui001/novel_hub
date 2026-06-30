@@ -309,6 +309,31 @@ def init_db() -> None:
         )
         c.execute(
             """
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_chat_sessions_project_updated(project_id, updated_at, id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                session_id INT NOT NULL,
+                role VARCHAR(32) NOT NULL,
+                content MEDIUMTEXT NOT NULL,
+                context_json MEDIUMTEXT NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                INDEX idx_chat_messages_session(session_id, id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
             CREATE TABLE IF NOT EXISTS model_settings (
                 id INT PRIMARY KEY AUTO_INCREMENT,
                 provider VARCHAR(32) NOT NULL,

@@ -1,4 +1,4 @@
-﻿from typing import Any, Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -98,4 +98,17 @@ class LlmSettingsPayload(BaseModel):
     writer_model: str = ""
     planner_model: str = ""
     judge_model: str = ""
+
+
+class ChatSessionCreatePayload(BaseModel):
+    project_id: int
+    title: str | None = None
+
+
+class ChatMessageCreatePayload(BaseModel):
+    content: str = Field(min_length=1)
+    chapter_title: str = "未命名章节"
+    chapter_group_title: str = "默认卷"
+    active_chapter_id: int | None = None
+    selection_text: str | None = None
 

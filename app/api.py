@@ -8,6 +8,8 @@ from app.schemas import (
     ChapterPlacementPayload,
     ChapterRenamePayload,
     ChapterSavePayload,
+    ChatMessageCreatePayload,
+    ChatSessionCreatePayload,
     ConsistencyPayload,
     DraftPayload,
     InlineAnalyzePayload,
@@ -18,7 +20,7 @@ from app.schemas import (
     ProjectCreate,
     StyleProfilePayload,
 )
-from app.services import ConsistencyGuard, GenerationService, LoreService, StyleService
+from app.services import ChatService, ConsistencyGuard, GenerationService, LoreService, StyleService
 from app.services import backup_service, settings_service
 
 init_db()
@@ -39,6 +41,7 @@ lore_service = LoreService()
 style_service = StyleService()
 generation_service = GenerationService()
 consistency_guard = ConsistencyGuard()
+chat_service = ChatService()
 
 
 @app.post("/projects")
@@ -229,15 +232,36 @@ def rename_chapter(chapter_id: int, payload: ChapterRenamePayload):
     return {"chapter_id": chapter_id, "title": title, "updated_at": now}
 
 
-@app.delete("/chapters/{chapter_id}")
-def delete_chapter(chapter_id: int):
-    with get_conn() as conn:
-        c = conn.cursor()
-        c.execute("SELECT id FROM chapters WHERE id = %s", (chapter_id,))
-        if not c.fetchone():
-            raise HTTPException(status_code=404, detail=f"chapter_id={chapter_id} 不存在")
-        c.execute("DELETE FROM chapters WHERE id = %s", (chapter_id,))
-    return {"chapter_id": chapter_id, "deleted": True}
+@app.get("/projects/{project_id}/chat-sessions")
+def list_chat_sessions(project_id: int):
+    return chat_service.list_sessions(project_id)
+
+
+@app.post("/chat-sessions")
+def create_chat_session(payload: ChatSessionCreatePayload):
+    return chat_service.create_session(payload.project_id, payload.title)
+
+
+@app.get("/chat-sessions/{session_id}/messages")
+def list_chat_messages(session_id: int):
+    return chat_service.list_messages(session_id)
+
+
+@app.post("/chat-sessions/{session_id}/messages")
+def create_chat_message(session_id: int, payload: ChatMessageCreatePayload):
+    return chat_service.send_message(
+        session_id=session_id,
+        content=payload.content,
+        chapter_title=payload.chapter_title,
+        chapter_group_title=payload.chapter_group_title,
+        active_chapter_id=payload.active_chapter_id,
+        selection_text=payload.selection_text,
+    )
+
+
+@app.post("/chat-sessions/{session_id}/clear")
+def clear_chat_session(session_id: int):
+    return chat_service.clear_session(session_id)
 
 
 @app.get("/chapters/{chapter_id}/backup")
