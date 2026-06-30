@@ -38,6 +38,21 @@ export interface ReviseCandidate {
   consistencyScore: number;
 }
 
+export type ChatRole = "user" | "assistant";
+
+export interface ChatMessage {
+  id: string;
+  role: ChatRole;
+  content: string;
+  context?: {
+    chapterTitle: string;
+    chapterGroupTitle: string;
+    activeChapterId: number | null;
+    hasSelection: boolean;
+    selectionText?: string;
+  };
+}
+
 interface WorkspaceState {
   projectId: number;
   // 编辑器当前内容（正文）
@@ -82,6 +97,14 @@ interface WorkspaceState {
   replaceRange: (start: number, end: number, text: string) => void;
   // 把 textarea ref 注册进来，方便重置选区/聚焦
   registerEditor: (el: HTMLTextAreaElement | null) => void;
+  // AI 会话框：侧栏与全屏共享同一份状态
+  chatMessages: ChatMessage[];
+  chatDraft: string;
+  setChatDraft: (v: string) => void;
+  chatFullscreenOpen: boolean;
+  setChatFullscreenOpen: (v: boolean) => void;
+  sendChatMessage: (content: string) => void;
+  clearChat: () => void;
   // 保存相关
   saveStatus: SaveStatus;
   lastSavedAt: string | null;
@@ -112,9 +135,13 @@ export function WorkspaceProvider({
   const [reviseTarget, setReviseTarget] = React.useState<ReviseTarget | null>(null);
   const [candidates, setCandidates] = React.useState<ReviseCandidate[]>([]);
   const [activeCandidateId, setActiveCandidateId] = React.useState<string | null>(null);
+  const [chatMessages, setChatMessages] = React.useState<ChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = React.useState("");
+  const [chatFullscreenOpen, setChatFullscreenOpen] = React.useState(false);
 
   // 候选 id / 序号计数器（环境禁用 Math.random / Date.now，用单调递增 ref）。
   const candidateSeq = React.useRef(0);
+  const chatSeq = React.useRef(0);
 
   const editorRef = React.useRef<HTMLTextAreaElement | null>(null);
   const registerEditor = React.useCallback((el: HTMLTextAreaElement | null) => {
@@ -221,6 +248,41 @@ export function WorkspaceProvider({
     [],
   );
 
+  const sendChatMessage = React.useCallback(
+    (content: string) => {
+      const text = content.trim();
+      if (!text) return;
+
+      chatSeq.current += 1;
+      const userId = `chat-user-${chatSeq.current}`;
+      chatSeq.current += 1;
+      const assistantId = `chat-assistant-${chatSeq.current}`;
+      const context = {
+        chapterTitle: chapterTitle.trim() || "未命名章节",
+        chapterGroupTitle: chapterGroupTitle.trim() || DEFAULT_GROUP_TITLE,
+        activeChapterId,
+        hasSelection: Boolean(selection?.text),
+        selectionText: selection?.text,
+      };
+      const selectedPreview = selection?.text.trim().slice(0, 120);
+      const assistantContent = selectedPreview
+        ? `我已看到你选中的片段，可以围绕节奏、画面感、人物动机和信息密度来处理。\n\n选区开头：${selectedPreview}${(context.selectionText?.length ?? 0) > 120 ? "…" : ""}\n\n你可以继续要求我：润色这段、改成更压抑的语气、扩写心理活动，或检查这段是否和前文设定冲突。`
+        : `我会围绕当前章节「${context.chapterTitle}」协助你。\n\n可以让我继续写下一段、分析戏剧冲突、检查人物动机，或给出几版改写方向。若要精修某一段，先在正文中选中文字再发送给我。`;
+
+      setChatMessages((prev) => [
+        ...prev,
+        { id: userId, role: "user", content: text, context },
+        { id: assistantId, role: "assistant", content: assistantContent, context },
+      ]);
+    },
+    [activeChapterId, chapterGroupTitle, chapterTitle, selection],
+  );
+
+  const clearChat = React.useCallback(() => {
+    setChatMessages([]);
+    setChatDraft("");
+  }, []);
+
   const saveNow = React.useCallback(async () => {
     const title = titleRef.current.trim() || "未命名章节";
     const groupTitle = groupTitleRef.current.trim() || DEFAULT_GROUP_TITLE;
@@ -321,6 +383,13 @@ export function WorkspaceProvider({
     clearRevise,
     replaceRange,
     registerEditor,
+    chatMessages,
+    chatDraft,
+    setChatDraft,
+    chatFullscreenOpen,
+    setChatFullscreenOpen,
+    sendChatMessage,
+    clearChat,
     saveStatus,
     lastSavedAt,
     autosaveEnabled,

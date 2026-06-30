@@ -1,9 +1,10 @@
 "use client";
 
-import { FileText, Layers, PenLine, ScrollText, ShieldCheck, Clock, Files } from "lucide-react";
+import { FileText, Layers, PenLine, ScrollText, ShieldCheck, Clock, Files, MessageSquare } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ChatPanel } from "./chat-panel";
 import { ConsistencyPanel } from "./consistency-panel";
 import { GenerationPanel } from "./generation-panel";
 import { InlineRevisePanel } from "./inline-revise-panel";
@@ -14,6 +15,7 @@ import { TimelinePanel } from "./timeline-panel";
 import { useWorkspace } from "./workspace-context";
 
 const tabs = [
+  { value: "chat", label: "聊天", icon: MessageSquare, Panel: ChatPanel },
   { value: "create", label: "创作", icon: PenLine, Panel: GenerationPanel },
   { value: "revise", label: "版本", icon: Files, Panel: InlineRevisePanel },
   { value: "consistency", label: "一致性", icon: ShieldCheck, Panel: ConsistencyPanel },
@@ -33,7 +35,7 @@ export function AssistantDock() {
       className="flex h-full flex-col"
     >
       <div className="border-b p-3">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid h-auto w-full grid-cols-4">
           {tabs.map(({ value, label, icon: Icon }) => (
             <TabsTrigger
               key={value}

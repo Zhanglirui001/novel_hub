@@ -6,16 +6,24 @@ import { ChevronLeft, PanelLeft } from "lucide-react";
 
 import { ThemePicker } from "@/components/theme-picker";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProject } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { AssistantDock } from "./assistant-dock";
 import { ChapterRail } from "./chapter-rail";
+import { ChatPanel } from "./chat-panel";
 import { EditorPane } from "./editor-pane";
 import { useWorkspace } from "./workspace-context";
 
 export function WorkspaceShell() {
-  const { projectId } = useWorkspace();
+  const { projectId, chatFullscreenOpen, setChatFullscreenOpen } = useWorkspace();
   const { data: project, isLoading } = useProject(projectId);
   const [railOpen, setRailOpen] = React.useState(true);
 
@@ -67,6 +75,20 @@ export function WorkspaceShell() {
           <AssistantDock />
         </aside>
       </div>
+
+      <Dialog open={chatFullscreenOpen} onOpenChange={setChatFullscreenOpen}>
+        <DialogContent className="flex h-[90vh] max-w-5xl flex-col gap-0 p-0">
+          <DialogHeader className="border-b px-6 py-4 pr-12">
+            <DialogTitle>AI 聊天</DialogTitle>
+            <DialogDescription>
+              围绕当前章节、选中文字和正文内容进行讨论。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1">
+            <ChatPanel fullscreen />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
