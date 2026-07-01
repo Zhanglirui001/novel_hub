@@ -37,6 +37,8 @@ export function ChatPanel({ fullscreen = false }: { fullscreen?: boolean }) {
     createChatSession,
     selectChatSession,
     sendChatMessage,
+    chatStreaming,
+    streamingContent,
     clearChat,
   } = useWorkspace();
 
@@ -44,16 +46,17 @@ export function ChatPanel({ fullscreen = false }: { fullscreen?: boolean }) {
 
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
-  }, [chatMessages.length, activeChatSessionId]);
+  }, [chatMessages.length, activeChatSessionId, streamingContent]);
 
   function submitMessage(content = chatDraft) {
     const text = content.trim();
-    if (!text) return;
+    if (!text || chatStreaming) return;
     sendChatMessage(text);
     if (content === chatDraft) setChatDraft("");
   }
 
   function runQuickAction(action: (typeof QUICK_ACTIONS)[number]) {
+    if (chatStreaming) return;
     if (action.requiresSelection && !selection?.text) {
       toast.error("请先在正文中选中一段文字");
       return;
@@ -173,6 +176,7 @@ export function ChatPanel({ fullscreen = false }: { fullscreen?: boolean }) {
               variant="secondary"
               size="sm"
               className="h-8"
+              disabled={chatStreaming}
               onClick={() => runQuickAction(action)}
             >
               {action.label}
@@ -190,17 +194,21 @@ export function ChatPanel({ fullscreen = false }: { fullscreen?: boolean }) {
                 <p>可以选中文字后询问改写、动机、节奏或设定问题，也可以直接让 AI 续写或梳理剧情。</p>
               </div>
             ) : null}
-            {chatMessages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                role={message.role}
-                content={message.content}
-                createdAt={message.createdAt}
-                canReplace={Boolean(selection) && message.role === "assistant"}
-                onInsert={() => insertAtEnd(message.content)}
-                onReplace={() => replaceSelection(message.content)}
-              />
-            ))}
+            {chatMessages.map((message, index) => {
+              const isLive = chatStreaming && index === chatMessages.length - 1 && message.role === "assistant";
+              return (
+                <MessageBubble
+                  key={message.id === -1 ? "streaming" : message.id === -2 ? "pending-user" : message.id}
+                  role={message.role}
+                  content={message.content}
+                  createdAt={message.createdAt}
+                  streaming={isLive}
+                  canReplace={Boolean(selection) && message.role === "assistant" && !isLive}
+                  onInsert={() => insertAtEnd(message.content)}
+                  onReplace={() => replaceSelection(message.content)}
+                />
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
@@ -219,10 +227,13 @@ export function ChatPanel({ fullscreen = false }: { fullscreen?: boolean }) {
             }}
             placeholder="询问 AI，或输入 / 调用指令"
             className="min-h-24 resize-none"
+            disabled={chatStreaming}
           />
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">Enter 发送，Shift + Enter 换行</p>
-            <Button size="sm" onClick={() => submitMessage()} disabled={!chatDraft.trim()}>
+            <p className="text-xs text-muted-foreground">
+              {chatStreaming ? "AI 正在生成…" : "Enter 发送，Shift + Enter 换行"}
+            </p>
+            <Button size="sm" onClick={() => submitMessage()} disabled={!chatDraft.trim() || chatStreaming}>
               <Send className="h-3.5 w-3.5" />
               发送
             </Button>
@@ -250,6 +261,7 @@ function MessageBubble({
   role,
   content,
   createdAt,
+  streaming = false,
   canReplace,
   onInsert,
   onReplace,
@@ -257,6 +269,7 @@ function MessageBubble({
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  streaming?: boolean;
   canReplace: boolean;
   onInsert: () => void;
   onReplace: () => void;
@@ -284,8 +297,19 @@ function MessageBubble({
           {isUser ? "你" : "AI"}
           <span>· {new Date(createdAt).toLocaleString()}</span>
         </div>
-        <div className="whitespace-pre-wrap break-words leading-relaxed">{content}</div>
-        {!isUser ? (
+        {streaming && !content ? (
+          <div className="flex items-center gap-1 py-1">
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.3s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.15s]" />
+            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current" />
+          </div>
+        ) : (
+          <div className="whitespace-pre-wrap break-words leading-relaxed">
+            {content}
+            {streaming ? <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-current align-middle" /> : null}
+          </div>
+        )}
+        {!isUser && !streaming ? (
           <div className="mt-3 flex flex-wrap gap-1.5">
             <Button variant="ghost" size="sm" className="h-7 px-2" onClick={copyMessage}>
               <Copy className="h-3.5 w-3.5" />

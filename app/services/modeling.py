@@ -37,13 +37,21 @@ class HeuristicModelClient:
             return "一致性检查已完成"
         return prompt
 
+    def chat(self, messages: list[dict[str, str]], model: str | None = None) -> str:
+        last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+        return f"（离线 Stub 模式）我已收到你的消息：{last_user[:60]}"
+
+    def stream_chat(self, messages: list[dict[str, str]], model: str | None = None):
+        yield self.chat(messages, model)
+
 
 class QwenModelClient:
     is_stub = False
 
-    def __init__(self, api_key: str, base_url: str) -> None:
+    def __init__(self, api_key: str, base_url: str, chat_model: str = "") -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
+        self.chat_model = (chat_model or "").strip()
 
     def generate(self, model_name: str, prompt: str, role: str) -> str:
         model = self._resolve_model(model_name, role)
@@ -90,6 +98,78 @@ class QwenModelClient:
             ]
         return [{"role": "user", "content": prompt}]
 
+    def _chat_model(self, model: str | None) -> str:
+        return (model or "").strip() or self.chat_model or os.getenv("QWEN_DEFAULT_MODEL", "qwen-plus")
+
+    def chat(self, messages: list[dict[str, str]], model: str | None = None) -> str:
+        """一次性返回完整回复（非流式）。"""
+        url = f"{self.base_url}/chat/completions"
+        payload = {
+            "model": self._chat_model(model),
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 2048,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        data = self._post_json(url, headers, payload, timeout_s=120)
+        choices = data.get("choices") or []
+        if not choices:
+            raise RuntimeError("Qwen 返回为空: choices 为空")
+        content = ((choices[0] or {}).get("message") or {}).get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise RuntimeError("Qwen 返回为空: message.content 为空")
+        return content.strip()
+
+    def stream_chat(self, messages: list[dict[str, str]], model: str | None = None):
+        """以 SSE 方式流式返回增量文本片段（delta）。"""
+        url = f"{self.base_url}/chat/completions"
+        payload = {
+            "model": self._chat_model(model),
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 2048,
+            "stream": True,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        }
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                for raw_line in resp:
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data_str = line[len("data:") :].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = (choices[0] or {}).get("delta") or {}
+                    piece = delta.get("content")
+                    if piece:
+                        yield piece
+        except urllib.error.HTTPError as exc:
+            raw = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+            raise RuntimeError(f"Qwen 流式调用失败: HTTP {exc.code} {raw}".strip()) from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"Qwen 流式调用失败: {exc.reason}") from exc
+
     def _post_json(self, url: str, headers: dict[str, str], payload: dict, timeout_s: int) -> dict:
         req = urllib.request.Request(
             url,
@@ -112,7 +192,11 @@ def build_model_client():
     db_settings = _load_db_settings()
     if db_settings and db_settings["provider"] != "stub" and db_settings["api_key"]:
         base_url = db_settings["base_url"] or "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        return QwenModelClient(api_key=db_settings["api_key"], base_url=base_url)
+        return QwenModelClient(
+            api_key=db_settings["api_key"],
+            base_url=base_url,
+            chat_model=db_settings.get("writer_model") or "",
+        )
     if db_settings and db_settings["provider"] == "stub":
         return HeuristicModelClient()
 
@@ -120,7 +204,8 @@ def build_model_client():
     if not api_key:
         return HeuristicModelClient()
     base_url = os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-    return QwenModelClient(api_key=api_key, base_url=base_url)
+    chat_model = os.getenv("QWEN_WRITER_MODEL", os.getenv("QWEN_DEFAULT_MODEL", ""))
+    return QwenModelClient(api_key=api_key, base_url=base_url, chat_model=chat_model)
 
 
 def _load_db_settings() -> dict | None:

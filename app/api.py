@@ -1,7 +1,9 @@
+import json
 import os
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from app.database import get_conn, init_db, utc_now
 from app.schemas import (
@@ -256,6 +258,31 @@ def create_chat_message(session_id: int, payload: ChatMessageCreatePayload):
         chapter_group_title=payload.chapter_group_title,
         active_chapter_id=payload.active_chapter_id,
         selection_text=payload.selection_text,
+    )
+
+
+@app.post("/chat-sessions/{session_id}/messages/stream")
+def stream_chat_message(session_id: int, payload: ChatMessageCreatePayload):
+    try:
+        events = chat_service.stream_message(
+            session_id=session_id,
+            content=payload.content,
+            chapter_title=payload.chapter_title,
+            chapter_group_title=payload.chapter_group_title,
+            active_chapter_id=payload.active_chapter_id,
+            selection_text=payload.selection_text,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    def event_stream():
+        for event in events:
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

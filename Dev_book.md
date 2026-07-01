@@ -731,7 +731,29 @@ lop:
 
 现在历史会话已经不是浏览器本地存储，而是按 `project_id` 存在后端数据库中。
 
+> 请接入真实的api-key，实现真正的流式ai对话聊天
 
+Done. Real streaming AI chat is now wired end-to-end and verified against the live DashScope API.
+
+**What changed**
+
+Backend:
+
+- [modeling.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/modeling.py) — added `chat()` and `stream_chat()` to `QwenModelClient` (SSE parsing over `stream: true`), a stub fallback, and made `build_model_client()` carry the configured writer model as the chat model.
+- [chat_service.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/chat_service.py) — replaced the canned `_assistant_reply` with `_build_llm_messages()` (system prompt + chapter/volume/selection context + recent history) and added `stream_message()` that yields `delta`/`done`/`error` events. User + assistant messages are persisted only after a successful generation, so a failed stream leaves nothing half-written and the user can retry. The old `send_message` now also calls the real model.
+- [api.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/api.py) — new `POST /chat-sessions/{id}/messages/stream` returning a `StreamingResponse` (`text/event-stream`).
+
+Frontend:
+
+- [api.ts](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/api.ts) — `streamChatMessage()` reads the SSE body via `getReader()`, buffering on `\n\n` boundaries.
+- [workspace-context.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/workspace-context.tsx) — `sendChatMessage` now streams: optimistic user bubble + live assistant bubble that fills token-by-token, then reconciles the React Query cache with the persisted messages on `done`.
+- [chat-panel.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/chat-panel.tsx) — typing indicator, blinking cursor during generation, input/quick-actions/send disabled while streaming, autoscroll follows the stream.
+
+**API key** — no new key was added. The app already picks up `QWEN_API_KEY` from [.env](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/.env) (or DB settings from the `/settings` page), and I confirmed it's live: the streaming test returned 6 real deltas from DashScope. The settings UI still lets you override provider/base-url/key/model at runtime.
+
+**Verification**: `tsc --noEmit` passes clean; backend modules import and the stub + real streaming paths both work. I couldn't run a full DB-backed round-trip (no MySQL in this shell), but the persistence code reuses the existing, already-working insert path.
+
+One note on security: the streaming endpoint is unauthenticated, same as every other route in this app — fine for local single-user dev, but you'd want auth before exposing it on a network.
 
 ### 深度功能开发
 

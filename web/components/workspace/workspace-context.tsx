@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { api } from "@/lib/api";
 import {
   useBackupChapter,
   useChatMessages,
@@ -15,10 +17,8 @@ import {
   useProjects,
   useRenameChapter,
   useSaveChapter,
-  useSendChatMessage,
 } from "@/lib/queries";
 import type { ChatSessionMessage, ChatSessionSummary, GenerationResult } from "@/lib/types";
-
 const AUTOSAVE_DEBOUNCE_MS = 5000;
 const DEFAULT_GROUP_TITLE = "默认卷";
 const MAX_CHAPTER_TITLE_LENGTH = 255;
@@ -106,6 +106,8 @@ interface WorkspaceState {
   createChatSession: (title?: string) => number;
   selectChatSession: (id: number) => void;
   sendChatMessage: (content: string) => void;
+  chatStreaming: boolean;
+  streamingContent: string;
   clearChat: () => void;
   saveStatus: SaveStatus;
   lastSavedAt: string | null;
@@ -147,6 +149,10 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
   const [chatDraft, setChatDraft] = React.useState("");
   const [chatFullscreenOpen, setChatFullscreenOpen] = React.useState(false);
   const [activeChatSessionId, setActiveChatSessionId] = React.useState<number | null>(null);
+  const [chatStreaming, setChatStreaming] = React.useState(false);
+  const [streamingContent, setStreamingContent] = React.useState("");
+  const [pendingUserMessage, setPendingUserMessage] = React.useState<ChatMessage | null>(null);
+  const streamAbortRef = React.useRef<AbortController | null>(null);
 
   const candidateSeq = React.useRef(0);
   const editorRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -158,8 +164,8 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
   const createChatSessionMutation = useCreateChatSession(projectId);
   const chatSessionsQuery = useChatSessions(projectId);
   const chatMessagesQuery = useChatMessages(activeChatSessionId);
-  const sendChatMessageMutation = useSendChatMessage(projectId, activeChatSessionId);
   const clearChatSessionMutation = useClearChatSession(projectId, activeChatSessionId);
+  const queryClient = useQueryClient();
   useProjects();
   useProject(projectId);
   useBackupChapter();
@@ -191,15 +197,27 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
     [activeChatSessionId, chatSessions],
   );
   const chatMessages: ChatMessage[] = React.useMemo(
-    () =>
-      (chatMessagesQuery.data ?? []).map((message) => ({
+    () => {
+      const persisted: ChatMessage[] = (chatMessagesQuery.data ?? []).map((message) => ({
         id: message.id,
         role: message.role,
         content: message.content,
         createdAt: message.created_at,
         context: message.context,
-      })),
-    [chatMessagesQuery.data],
+      }));
+      // 流式过程中，用乐观的用户气泡与实时助手气泡补足尚未落库的两条消息。
+      if (pendingUserMessage) {
+        persisted.push(pendingUserMessage);
+        persisted.push({
+          id: -1,
+          role: "assistant",
+          content: streamingContent,
+          createdAt: pendingUserMessage.createdAt,
+        });
+      }
+      return persisted;
+    },
+    [chatMessagesQuery.data, pendingUserMessage, streamingContent],
   );
 
   React.useEffect(() => {
@@ -300,21 +318,73 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
 
   const sendChatMessage = React.useCallback((content: string) => {
     const text = content.trim();
-    if (!text || activeChatSessionId === null) return;
-    sendChatMessageMutation.mutate(
-      {
-        content: text,
-        chapter_title: chapterTitle.trim() || "未命名章节",
-        chapter_group_title: chapterGroupTitle.trim() || DEFAULT_GROUP_TITLE,
-        active_chapter_id: activeChapterId,
-        selection_text: selection?.text ?? null,
-      },
-      {
-        onSuccess: () => setChatDraft(""),
-        onError: (error) => toast.error(error instanceof Error ? error.message : "发送失败"),
-      },
-    );
-  }, [activeChapterId, activeChatSessionId, chapterGroupTitle, chapterTitle, selection?.text, sendChatMessageMutation]);
+    if (!text || activeChatSessionId === null || chatStreaming) return;
+
+    const sessionId = activeChatSessionId;
+    const nowIso = new Date().toISOString();
+    setPendingUserMessage({ id: -2, role: "user", content: text, createdAt: nowIso });
+    setStreamingContent("");
+    setChatStreaming(true);
+    setChatDraft("");
+
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+
+    let assembled = "";
+    let streamError: string | null = null;
+
+    api
+      .streamChatMessage(
+        sessionId,
+        {
+          content: text,
+          chapter_title: chapterTitle.trim() || "未命名章节",
+          chapter_group_title: chapterGroupTitle.trim() || DEFAULT_GROUP_TITLE,
+          active_chapter_id: activeChapterId,
+          selection_text: selection?.text ?? null,
+        },
+        {
+          signal: controller.signal,
+          onEvent: (event) => {
+            if (event.type === "delta") {
+              assembled += event.text;
+              setStreamingContent(assembled);
+            } else if (event.type === "error") {
+              streamError = event.message;
+            } else if (event.type === "done") {
+              // 用后端落库结果覆盖本地缓存，拿到真实 id 与时间戳。
+              queryClient.setQueryData(["chat-messages", event.session.id], (prev: unknown) => {
+                const existing = Array.isArray(prev) ? prev : [];
+                return [...existing, ...event.messages];
+              });
+              queryClient.invalidateQueries({ queryKey: ["chat-sessions", projectId] });
+            }
+          },
+        },
+      )
+      .then(() => {
+        if (streamError) toast.error(streamError);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        toast.error(error instanceof Error ? error.message : "发送失败");
+      })
+      .finally(() => {
+        setChatStreaming(false);
+        setStreamingContent("");
+        setPendingUserMessage(null);
+        streamAbortRef.current = null;
+      });
+  }, [
+    activeChapterId,
+    activeChatSessionId,
+    chapterGroupTitle,
+    chapterTitle,
+    chatStreaming,
+    projectId,
+    queryClient,
+    selection?.text,
+  ]);
 
   const clearChat = React.useCallback(() => {
     if (activeChatSessionId === null) return;
@@ -430,6 +500,8 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
     createChatSession,
     selectChatSession,
     sendChatMessage,
+    chatStreaming,
+    streamingContent,
     clearChat,
     saveStatus,
     lastSavedAt,

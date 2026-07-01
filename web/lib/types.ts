@@ -273,6 +273,11 @@ export interface ChatMessageCreateResponse {
   messages: ChatSessionMessage[];
 }
 
+export type ChatStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "done"; session: ChatSessionSummary; messages: ChatSessionMessage[] }
+  | { type: "error"; message: string };
+
 export interface ChatSessionClearResponse {
   session_id: number;
   cleared: boolean;
