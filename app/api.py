@@ -252,6 +252,7 @@ def get_daily_checkin(project_id: int):
         raise _checkin_error(exc) from exc
 
 
+<<<<<<< HEAD
 @app.get("/projects/{project_id}/daily-checkin/month")
 def get_daily_checkin_month(project_id: int, month: str):
     try:
@@ -268,6 +269,8 @@ def get_daily_checkin_day(project_id: int, day: str):
         raise _checkin_error(exc) from exc
 
 
+=======
+>>>>>>> 31484ff3c283ca2d549d76446d37100c651074eb
 @app.post("/projects/{project_id}/daily-todos")
 def create_daily_todo(project_id: int, payload: DailyTodoCreatePayload):
     content = payload.content.strip()
