@@ -11,6 +11,32 @@ class ProjectCreate(BaseModel):
     description: str = ""
 
 
+class DailyTodoCreatePayload(BaseModel):
+    content: str = Field(max_length=500)
+
+
+class DailyTodoUpdatePayload(BaseModel):
+    content: str | None = Field(default=None, max_length=500)
+    completed: bool | None = None
+
+
+class DailyCheckinPayload(BaseModel):
+    pass
+
+
+class DailyTodoCreatePayload(BaseModel):
+    content: str = Field(max_length=500)
+
+
+class DailyTodoUpdatePayload(BaseModel):
+    content: str | None = Field(default=None, max_length=500)
+    completed: bool | None = None
+
+
+class DailyCheckinPayload(BaseModel):
+    pass
+
+
 class LoreImportPayload(BaseModel):
     project_id: int
     characters: list[dict[str, Any]] = Field(default_factory=list)

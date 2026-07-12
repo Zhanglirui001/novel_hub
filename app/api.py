@@ -13,6 +13,9 @@ from app.schemas import (
     ChatMessageCreatePayload,
     ChatSessionCreatePayload,
     ConsistencyPayload,
+    DailyCheckinPayload,
+    DailyTodoCreatePayload,
+    DailyTodoUpdatePayload,
     DraftPayload,
     InlineAnalyzePayload,
     InlineRevisePayload,
@@ -23,6 +26,7 @@ from app.schemas import (
     StyleProfilePayload,
 )
 from app.services import ChatService, ConsistencyGuard, GenerationService, LoreService, StyleService
+from app.services.checkin_service import CheckinService
 from app.services import backup_service, settings_service
 
 init_db()
@@ -44,6 +48,12 @@ style_service = StyleService()
 generation_service = GenerationService()
 consistency_guard = ConsistencyGuard()
 chat_service = ChatService()
+checkin_service = CheckinService()
+
+
+def _checkin_error(exc: ValueError) -> HTTPException:
+    detail = str(exc)
+    return HTTPException(status_code=404 if detail.startswith("project_id=") else 400, detail=detail)
 
 
 @app.post("/projects")
@@ -232,6 +242,52 @@ def rename_chapter(chapter_id: int, payload: ChapterRenamePayload):
             (title, now, chapter_id),
         )
     return {"chapter_id": chapter_id, "title": title, "updated_at": now}
+
+
+@app.get("/projects/{project_id}/daily-checkin")
+def get_daily_checkin(project_id: int):
+    try:
+        return checkin_service.get_today(project_id)
+    except ValueError as exc:
+        raise _checkin_error(exc) from exc
+
+
+@app.post("/projects/{project_id}/daily-todos")
+def create_daily_todo(project_id: int, payload: DailyTodoCreatePayload):
+    content = payload.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="待办内容不能为空")
+    try:
+        return checkin_service.create_todo(project_id, content)
+    except ValueError as exc:
+        raise _checkin_error(exc) from exc
+
+
+@app.patch("/daily-todos/{todo_id}")
+def update_daily_todo(todo_id: int, project_id: int, payload: DailyTodoUpdatePayload):
+    content = payload.content.strip() if payload.content is not None else None
+    if content == "":
+        raise HTTPException(status_code=400, detail="待办内容不能为空")
+    try:
+        return checkin_service.update_todo(project_id, todo_id, content, payload.completed)
+    except ValueError as exc:
+        raise _checkin_error(exc) from exc
+
+
+@app.delete("/daily-todos/{todo_id}")
+def delete_daily_todo(todo_id: int, project_id: int):
+    try:
+        return checkin_service.delete_todo(project_id, todo_id)
+    except ValueError as exc:
+        raise _checkin_error(exc) from exc
+
+
+@app.post("/projects/{project_id}/daily-checkin")
+def create_daily_checkin(project_id: int, _payload: DailyCheckinPayload):
+    try:
+        return checkin_service.check_in(project_id)
+    except ValueError as exc:
+        raise _checkin_error(exc) from exc
 
 
 @app.get("/projects/{project_id}/chat-sessions")

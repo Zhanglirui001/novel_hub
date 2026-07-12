@@ -17,6 +17,9 @@ import {
   InlineReviseRequest,
   InlineReviseResult,
   BackupInfo,
+  DailyCheckinSummary,
+  DailyTodoCreateRequest,
+  DailyTodoUpdateRequest,
   LlmSettings,
   LlmSettingsPayload,
   LlmTestResult,
@@ -73,6 +76,32 @@ export const api = {
   },
   getProject(projectId: number) {
     return request<Project>(`/projects/${projectId}`);
+  },
+  getDailyCheckin(projectId: number) {
+    return request<DailyCheckinSummary>(`/projects/${projectId}/daily-checkin`);
+  },
+  createDailyTodo(projectId: number, payload: DailyTodoCreateRequest) {
+    return request<DailyCheckinSummary>(`/projects/${projectId}/daily-todos`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  updateDailyTodo(todoId: number, projectId: number, payload: DailyTodoUpdateRequest) {
+    return request<DailyCheckinSummary>(`/daily-todos/${todoId}?project_id=${projectId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteDailyTodo(todoId: number, projectId: number) {
+    return request<DailyCheckinSummary>(`/daily-todos/${todoId}?project_id=${projectId}`, {
+      method: 'DELETE',
+    });
+  },
+  createDailyCheckin(projectId: number) {
+    return request<DailyCheckinSummary>(`/projects/${projectId}/daily-checkin`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
   },
   listChapters(projectId: number) {
     return request<Chapter[]>(`/projects/${projectId}/chapters`);

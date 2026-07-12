@@ -755,5 +755,11 @@ Frontend:
 
 One note on security: the streaming endpoint is unauthenticated, same as every other route in this app — fine for local single-user dev, but you'd want auth before exposing it on a network.
 
+
+
+
+
+
+
 ### 深度功能开发
 
