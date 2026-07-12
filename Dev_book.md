@@ -797,3 +797,5 @@ One note on security: the streaming endpoint is unauthenticated, same as every o
 - `PYTHONPATH=. python tests/test_inspiration_service.py`
 - `web` 下 `npm run build` 通过，包含 `/projects/[id]/inspiration` 路由。
 - API 的 OpenAPI 服务在 `http://127.0.0.1:8000/openapi.json` 返回 `200`。
+
+> 是否能支持从左侧拖拽卡片到画板当中，同时支持更灵活的、更易触发的卡片之间的链接操作，优化一下交互，以及支持更方便直接的方式创建一个小的节点（比如只是某个事件或者某个角色名字的节点）

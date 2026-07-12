@@ -7,6 +7,8 @@ import {
   Controls,
   MiniMap,
   ReactFlow,
+  applyEdgeChanges,
+  applyNodeChanges,
   type Connection,
   type Edge,
   type Node,
@@ -97,32 +99,22 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
   };
 
   const onNodesChange: OnNodesChange = (changes) => {
-    setNodes((current) => {
-      let next = current;
-      for (const change of changes) {
-        if (change.type === "position" && change.position) {
-          const position = change.position;
-          next = next.map((node) => node.id === change.id ? { ...node, position } : node);
-        }
-        if (change.type === "remove") next = next.filter((node) => node.id !== change.id);
-        if (change.type === "select") next = next.map((node) => node.id === change.id ? { ...node, selected: change.selected } : node);
-      }
-      if (changes.some((change) => change.type === "select")) onSelectedNodeIdsChange(next.filter((node) => node.selected).map((node) => node.id));
-      if (changes.some((change) => change.type === "position" && !change.dragging) || changes.some((change) => change.type === "remove")) emit(next, edges);
-      return next;
-    });
+    const next = applyNodeChanges(changes, nodes);
+    setNodes(next);
+
+    if (changes.some((change) => change.type === "select")) {
+      onSelectedNodeIdsChange(next.filter((node) => node.selected).map((node) => node.id));
+    }
+    if (changes.some((change) => change.type === "position" && !change.dragging) || changes.some((change) => change.type === "remove")) {
+      emit(next, edges);
+    }
   };
 
   const onEdgesChange: OnEdgesChange<Edge> = (changes) => {
-    setEdges((current) => {
-      let next = current;
-      for (const change of changes) {
-        if (change.type === "remove") next = next.filter((edge) => edge.id !== change.id);
-        if (change.type === "select") next = next.map((edge) => edge.id === change.id ? { ...edge, selected: change.selected } : edge);
-      }
-      if (changes.some((change) => change.type === "remove")) emit(nodes, next);
-      return next;
-    });
+    const next = applyEdgeChanges(changes, edges);
+    setEdges(next);
+
+    if (changes.some((change) => change.type === "remove")) emit(nodes, next);
   };
 
   const onConnect: OnConnect = (connection: Connection) => {
