@@ -16,6 +16,8 @@ from app.schemas import (
     DailyCheckinPayload,
     DailyTodoCreatePayload,
     DailyTodoUpdatePayload,
+    MonthlyFixedTodoCreatePayload,
+    MonthlyFixedTodoUpdatePayload,
     DraftPayload,
     InlineAnalyzePayload,
     InlineRevisePayload,
@@ -252,7 +254,6 @@ def get_daily_checkin(project_id: int):
         raise _checkin_error(exc) from exc
 
 
-<<<<<<< HEAD
 @app.get("/projects/{project_id}/daily-checkin/month")
 def get_daily_checkin_month(project_id: int, month: str):
     try:
@@ -269,34 +270,70 @@ def get_daily_checkin_day(project_id: int, day: str):
         raise _checkin_error(exc) from exc
 
 
-=======
->>>>>>> 31484ff3c283ca2d549d76446d37100c651074eb
 @app.post("/projects/{project_id}/daily-todos")
-def create_daily_todo(project_id: int, payload: DailyTodoCreatePayload):
+def create_daily_todo(project_id: int, day: str, payload: DailyTodoCreatePayload):
     content = payload.content.strip()
     if not content:
         raise HTTPException(status_code=400, detail="待办内容不能为空")
     try:
-        return checkin_service.create_todo(project_id, content)
+        return checkin_service.create_todo(project_id, content, day)
     except ValueError as exc:
         raise _checkin_error(exc) from exc
 
 
 @app.patch("/daily-todos/{todo_id}")
-def update_daily_todo(todo_id: int, project_id: int, payload: DailyTodoUpdatePayload):
+def update_daily_todo(todo_id: int, project_id: int, day: str, payload: DailyTodoUpdatePayload):
     content = payload.content.strip() if payload.content is not None else None
     if content == "":
         raise HTTPException(status_code=400, detail="待办内容不能为空")
     try:
-        return checkin_service.update_todo(project_id, todo_id, content, payload.completed)
+        return checkin_service.update_todo(project_id, todo_id, day, content, payload.completed)
     except ValueError as exc:
         raise _checkin_error(exc) from exc
 
 
 @app.delete("/daily-todos/{todo_id}")
-def delete_daily_todo(todo_id: int, project_id: int):
+def delete_daily_todo(todo_id: int, project_id: int, day: str):
     try:
-        return checkin_service.delete_todo(project_id, todo_id)
+        return checkin_service.delete_todo(project_id, todo_id, day)
+    except ValueError as exc:
+        raise _checkin_error(exc) from exc
+
+
+@app.get("/projects/{project_id}/monthly-fixed-todos")
+def list_monthly_fixed_todos(project_id: int, month: str):
+    try:
+        return checkin_service.list_fixed_todos(project_id, month)
+    except ValueError as exc:
+        raise _checkin_error(exc) from exc
+
+
+@app.post("/projects/{project_id}/monthly-fixed-todos")
+def create_monthly_fixed_todo(project_id: int, payload: MonthlyFixedTodoCreatePayload):
+    content = payload.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="固定待办内容不能为空")
+    try:
+        return checkin_service.create_fixed_todo(project_id, payload.month, content, payload.weekdays)
+    except ValueError as exc:
+        raise _checkin_error(exc) from exc
+
+
+@app.patch("/monthly-fixed-todos/{template_id}")
+def update_monthly_fixed_todo(template_id: int, project_id: int, payload: MonthlyFixedTodoUpdatePayload):
+    content = payload.content.strip() if payload.content is not None else None
+    if content == "":
+        raise HTTPException(status_code=400, detail="固定待办内容不能为空")
+    try:
+        return checkin_service.update_fixed_todo(project_id, template_id, content, payload.weekdays)
+    except ValueError as exc:
+        raise _checkin_error(exc) from exc
+
+
+@app.delete("/monthly-fixed-todos/{template_id}")
+def delete_monthly_fixed_todo(template_id: int, project_id: int):
+    try:
+        return checkin_service.delete_fixed_todo(project_id, template_id)
     except ValueError as exc:
         raise _checkin_error(exc) from exc
 

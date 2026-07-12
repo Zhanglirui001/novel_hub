@@ -44,6 +44,24 @@ export interface DailyCheckinMonthSummary {
   days: DailyCheckinDayStatus[];
 }
 
+export interface MonthlyFixedTodo {
+  id: number;
+  month_key: string;
+  content: string;
+  weekdays: number[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MonthlyFixedTodo {
+  id: number;
+  month_key: string;
+  content: string;
+  weekdays: number[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DailyTodoCreateRequest {
   content: string;
 }

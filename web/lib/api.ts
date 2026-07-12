@@ -19,6 +19,7 @@ import {
   BackupInfo,
   DailyCheckinMonthSummary,
   DailyCheckinSummary,
+  MonthlyFixedTodo,
   DailyTodoCreateRequest,
   DailyTodoUpdateRequest,
   LlmSettings,
@@ -87,20 +88,34 @@ export const api = {
   getDailyCheckinMonth(projectId: number, month: string) {
     return request<DailyCheckinMonthSummary>(`/projects/${projectId}/daily-checkin/month?month=${month}`);
   },
-  createDailyTodo(projectId: number, payload: DailyTodoCreateRequest) {
-    return request<DailyCheckinSummary>(`/projects/${projectId}/daily-todos`, {
+  createDailyTodo(projectId: number, day: string, payload: DailyTodoCreateRequest) {
+    return request<DailyCheckinSummary>(`/projects/${projectId}/daily-todos?day=${day}`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   },
-  updateDailyTodo(todoId: number, projectId: number, payload: DailyTodoUpdateRequest) {
-    return request<DailyCheckinSummary>(`/daily-todos/${todoId}?project_id=${projectId}`, {
+  updateDailyTodo(todoId: number, projectId: number, day: string, payload: DailyTodoUpdateRequest) {
+    return request<DailyCheckinSummary>(`/daily-todos/${todoId}?project_id=${projectId}&day=${day}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
   },
-  deleteDailyTodo(todoId: number, projectId: number) {
-    return request<DailyCheckinSummary>(`/daily-todos/${todoId}?project_id=${projectId}`, {
+  deleteDailyTodo(todoId: number, projectId: number, day: string) {
+    return request<DailyCheckinSummary>(`/daily-todos/${todoId}?project_id=${projectId}&day=${day}`, {
+      method: 'DELETE',
+    });
+  },
+  listMonthlyFixedTodos(projectId: number, month: string) {
+    return request<MonthlyFixedTodo[]>(`/projects/${projectId}/monthly-fixed-todos?month=${month}`);
+  },
+  createMonthlyFixedTodo(projectId: number, payload: { month: string; content: string; weekdays: number[] }) {
+    return request<MonthlyFixedTodo[]>(`/projects/${projectId}/monthly-fixed-todos`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteMonthlyFixedTodo(templateId: number, projectId: number) {
+    return request<{ month: string }>(`/monthly-fixed-todos/${templateId}?project_id=${projectId}`, {
       method: 'DELETE',
     });
   },

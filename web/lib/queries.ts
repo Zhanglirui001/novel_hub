@@ -64,7 +64,8 @@ function useDailyCheckinCache(projectId: number) {
 export function useCreateDailyTodo(projectId: number) {
   const setSummary = useDailyCheckinCache(projectId);
   return useMutation({
-    mutationFn: (payload: DailyTodoCreateRequest) => api.createDailyTodo(projectId, payload),
+    mutationFn: ({ day, payload }: { day: string; payload: DailyTodoCreateRequest }) =>
+      api.createDailyTodo(projectId, day, payload),
     onSuccess: setSummary,
   });
 }
@@ -72,8 +73,8 @@ export function useCreateDailyTodo(projectId: number) {
 export function useUpdateDailyTodo(projectId: number) {
   const setSummary = useDailyCheckinCache(projectId);
   return useMutation({
-    mutationFn: ({ todoId, payload }: { todoId: number; payload: DailyTodoUpdateRequest }) =>
-      api.updateDailyTodo(todoId, projectId, payload),
+    mutationFn: ({ todoId, day, payload }: { todoId: number; day: string; payload: DailyTodoUpdateRequest }) =>
+      api.updateDailyTodo(todoId, projectId, day, payload),
     onSuccess: setSummary,
   });
 }
@@ -81,8 +82,41 @@ export function useUpdateDailyTodo(projectId: number) {
 export function useDeleteDailyTodo(projectId: number) {
   const setSummary = useDailyCheckinCache(projectId);
   return useMutation({
-    mutationFn: (todoId: number) => api.deleteDailyTodo(todoId, projectId),
+    mutationFn: ({ todoId, day }: { todoId: number; day: string }) => api.deleteDailyTodo(todoId, projectId, day),
     onSuccess: setSummary,
+  });
+}
+
+export function useMonthlyFixedTodos(projectId: number, month: string) {
+  return useQuery({
+    queryKey: ["monthly-fixed-todos", projectId, month],
+    queryFn: () => api.listMonthlyFixedTodos(projectId, month),
+    enabled: Number.isFinite(projectId) && /^\d{4}-\d{2}$/.test(month),
+  });
+}
+
+function useMonthlyFixedTodoCache(projectId: number) {
+  const queryClient = useQueryClient();
+  return (month: string) => {
+    queryClient.invalidateQueries({ queryKey: ["monthly-fixed-todos", projectId, month] });
+    queryClient.invalidateQueries({ queryKey: ["daily-checkin-month", projectId, month] });
+    queryClient.invalidateQueries({ queryKey: ["daily-checkin", projectId] });
+  };
+}
+
+export function useCreateMonthlyFixedTodo(projectId: number) {
+  const invalidate = useMonthlyFixedTodoCache(projectId);
+  return useMutation({
+    mutationFn: (payload: { month: string; content: string; weekdays: number[] }) => api.createMonthlyFixedTodo(projectId, payload),
+    onSuccess: (_, payload) => invalidate(payload.month),
+  });
+}
+
+export function useDeleteMonthlyFixedTodo(projectId: number) {
+  const invalidate = useMonthlyFixedTodoCache(projectId);
+  return useMutation({
+    mutationFn: ({ templateId, month: _month }: { templateId: number; month: string }) => api.deleteMonthlyFixedTodo(templateId, projectId),
+    onSuccess: (_, payload) => invalidate(payload.month),
   });
 }
 

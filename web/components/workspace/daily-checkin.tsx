@@ -1,16 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Circle,
-  ListTodo,
-  Pencil,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Circle, ListTodo, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -20,233 +11,156 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   useCreateDailyCheckin,
   useCreateDailyTodo,
+  useCreateMonthlyFixedTodo,
   useDailyCheckin,
   useDailyCheckinMonth,
   useDeleteDailyTodo,
+  useDeleteMonthlyFixedTodo,
+  useMonthlyFixedTodos,
   useUpdateDailyTodo,
 } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import type { DailyCheckinDayStatus, DailyTodo } from "@/lib/types";
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+const TEMPLATE_WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
 
-function utcDateKey(value = new Date()) {
-  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}-${String(value.getUTCDate()).padStart(2, "0")}`;
+function todayKey() {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
 }
 
-function monthKey(value: Date) {
-  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
-function monthLabel(month: string) {
-  const [year, value] = month.split("-");
-  return `${year} 年 ${Number(value)} 月`;
-}
-
-function addMonths(month: string, offset: number) {
+function moveMonth(month: string, offset: number) {
   const [year, value] = month.split("-").map(Number);
-  return monthKey(new Date(Date.UTC(year, value - 1 + offset, 1)));
+  const next = new Date(Date.UTC(year, value - 1 + offset, 1));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function daysForMonth(month: string) {
+function calendarCells(month: string) {
   const [year, value] = month.split("-").map(Number);
   const first = new Date(Date.UTC(year, value - 1, 1));
-  const firstWeekday = first.getUTCDay();
-  const daysInMonth = new Date(Date.UTC(year, value, 0)).getUTCDate();
-  const cells: Array<{ date: string; day: number } | null> = Array(firstWeekday).fill(null);
-
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    cells.push({ date: `${month}-${String(day).padStart(2, "0")}`, day });
+  const leading = first.getUTCDay();
+  const total = new Date(Date.UTC(year, value, 0)).getUTCDate();
+  const cells: Array<{ date: string; label: number } | null> = Array(leading).fill(null);
+  for (let day = 1; day <= total; day += 1) {
+    cells.push({ date: `${month}-${String(day).padStart(2, "0")}`, label: day });
   }
   while (cells.length < 42) cells.push(null);
   return cells;
 }
 
-function TodoRow({
-  todo,
-  locked,
-  pending,
-  onUpdate,
-  onDelete,
-}: {
+function TodoItem({ todo, canEdit, canComplete, pending, onUpdate, onDelete }: {
   todo: DailyTodo;
-  locked: boolean;
+  canEdit: boolean;
+  canComplete: boolean;
   pending: boolean;
-  onUpdate?: (payload: { content?: string; completed?: boolean }) => void;
-  onDelete?: () => void;
+  onUpdate: (payload: { content?: string; completed?: boolean }) => void;
+  onDelete: () => void;
 }) {
   const [editing, setEditing] = React.useState(false);
   const [content, setContent] = React.useState(todo.content);
 
   React.useEffect(() => setContent(todo.content), [todo.content]);
 
-  function saveEdit() {
+  function save() {
     const next = content.trim();
-    if (!next) {
-      toast.error("待办内容不能为空");
-      return;
-    }
-    if (next !== todo.content) onUpdate?.({ content: next });
+    if (!next) return toast.error("待办内容不能为空");
+    if (next !== todo.content) onUpdate({ content: next });
     setEditing(false);
   }
 
   return (
-    <li className="flex min-w-0 items-center gap-2 border-b py-2 last:border-b-0">
+    <li className="flex items-center gap-2 border-b py-2 last:border-0">
       <button
         type="button"
-        className="shrink-0 text-muted-foreground transition-colors disabled:cursor-not-allowed"
+        disabled={!canComplete || pending}
+        className="shrink-0 disabled:cursor-not-allowed"
         aria-label={todo.completed ? "已完成" : "未完成"}
-        disabled={locked || pending}
-        onClick={() => onUpdate?.({ completed: !todo.completed })}
+        onClick={() => onUpdate({ completed: !todo.completed })}
       >
-        {todo.completed ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <Circle className="h-4 w-4" />}
+        {todo.completed ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <Circle className="h-4 w-4 text-muted-foreground" />}
       </button>
       {editing ? (
         <Input
+          autoFocus
+          className="h-8 flex-1"
           value={content}
           disabled={pending}
-          className="h-8 min-w-0 flex-1"
-          autoFocus
           onChange={(event) => setContent(event.target.value)}
-          onBlur={saveEdit}
+          onBlur={save}
           onKeyDown={(event) => {
-            if (event.key === "Enter") saveEdit();
-            if (event.key === "Escape") {
-              setContent(todo.content);
-              setEditing(false);
-            }
+            if (event.key === "Enter") save();
+            if (event.key === "Escape") setEditing(false);
           }}
         />
       ) : (
-        <span className={cn("min-w-0 flex-1 break-words", todo.completed && "text-muted-foreground line-through")}>
+        <button type="button" disabled={!canEdit || pending} onClick={() => setEditing(true)} className={cn("min-w-0 flex-1 text-left text-sm", todo.completed && "text-muted-foreground line-through")}>
           {todo.content}
-        </span>
+        </button>
       )}
-      {!locked && !editing && (
-        <div className="flex shrink-0 items-center">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7" disabled={pending} onClick={() => setEditing(true)}>
-                <Pencil className="h-3.5 w-3.5" />
-                <span className="sr-only">编辑待办</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>编辑待办</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" disabled={pending} onClick={onDelete}>
-                <Trash2 className="h-3.5 w-3.5" />
-                <span className="sr-only">删除待办</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>删除待办</TooltipContent>
-          </Tooltip>
-        </div>
+      {canEdit && !editing && (
+        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" disabled={pending} onClick={onDelete} aria-label="删除待办">
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
       )}
     </li>
   );
 }
 
-function DayCell({
-  cell,
-  status,
-  selected,
-  today,
-  disabled,
-  onSelect,
-}: {
-  cell: { date: string; day: number } | null;
-  status?: DailyCheckinDayStatus;
-  selected: boolean;
-  today: string;
-  disabled: boolean;
-  onSelect: () => void;
-}) {
-  if (!cell) return <div className="min-h-16 border-b border-r bg-muted/20 sm:min-h-20" />;
-
-  const allDone = status && status.total_count > 0 && status.completed_count === status.total_count;
-  const progress = status && status.total_count > 0 ? `${status.completed_count}/${status.total_count}` : "";
-  const label = `${cell.date}，${status?.checked_in ? "已签到" : progress ? `完成 ${progress} 项` : "无任务记录"}`;
-
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      disabled={disabled}
-      onClick={onSelect}
-      className={cn(
-        "relative flex min-h-16 min-w-0 flex-col items-start border-b border-r p-1.5 text-left transition-colors sm:min-h-20 sm:p-2",
-        disabled ? "cursor-not-allowed text-muted-foreground/40" : "hover:bg-muted/60",
-        selected && "bg-muted",
-        cell.date === today && "ring-1 ring-inset ring-primary",
-        status?.checked_in && "bg-primary/10",
-        allDone && !status?.checked_in && "bg-emerald-500/10",
-      )}
-    >
-      <span className="text-xs font-medium sm:text-sm">{cell.day}</span>
-      {progress && <span className="mt-auto text-[10px] text-muted-foreground sm:text-xs">{progress}</span>}
-      {status?.checked_in && <CheckCircle2 className="absolute bottom-1.5 right-1.5 h-3.5 w-3.5 text-primary" />}
-      {!status?.checked_in && status && !allDone && status.total_count > 0 && (
-        <span className="absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full bg-amber-500" />
-      )}
-    </button>
-  );
-}
-
 export function DailyCheckin({ projectId }: { projectId: number }) {
-  const today = utcDateKey();
+  const today = todayKey();
   const [open, setOpen] = React.useState(false);
-  const [month, setMonth] = React.useState(() => today.slice(0, 7));
+  const [month, setMonth] = React.useState(today.slice(0, 7));
   const [selectedDay, setSelectedDay] = React.useState(today);
-  const [content, setContent] = React.useState("");
+  const [taskContent, setTaskContent] = React.useState("");
+  const [fixedContent, setFixedContent] = React.useState("");
+  const [fixedWeekdays, setFixedWeekdays] = React.useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
+
   const { data: todaySummary } = useDailyCheckin(projectId);
+  const { data: summary, isLoading } = useDailyCheckin(projectId, selectedDay);
   const { data: monthSummary } = useDailyCheckinMonth(projectId, month);
-  const { data: summary, isLoading: isDetailLoading } = useDailyCheckin(projectId, selectedDay);
+  const { data: fixedTodos = [] } = useMonthlyFixedTodos(projectId, month);
   const createTodo = useCreateDailyTodo(projectId);
   const updateTodo = useUpdateDailyTodo(projectId);
   const deleteTodo = useDeleteDailyTodo(projectId);
   const checkin = useCreateDailyCheckin(projectId);
-  const isPending = createTodo.isPending || updateTodo.isPending || deleteTodo.isPending || checkin.isPending;
+  const createFixed = useCreateMonthlyFixedTodo(projectId);
+  const deleteFixed = useDeleteMonthlyFixedTodo(projectId);
+  const pending = createTodo.isPending || updateTodo.isPending || deleteTodo.isPending || checkin.isPending || createFixed.isPending || deleteFixed.isPending;
   const isToday = selectedDay === today;
-  const dayStatuses = React.useMemo(
-    () => new Map(monthSummary?.days.map((status) => [status.date, status])),
-    [monthSummary?.days],
-  );
-
+  const isFuture = selectedDay > today;
+  const isEditable = selectedDay >= today && !summary?.locked;
   const completed = summary?.completed_count ?? 0;
   const total = summary?.total_count ?? 0;
-  const remaining = Math.max(total - completed, 0);
-  const canCheckIn = isToday && total > 0 && remaining === 0 && !summary?.checked_in;
-  const isFutureMonth = month >= today.slice(0, 7);
+  const canCheckIn = isToday && total > 0 && completed === total && !summary?.checked_in;
+  const statusByDate = React.useMemo(() => new Map(monthSummary?.days.map((status) => [status.date, status])), [monthSummary]);
 
-  function showError(error: Error) {
+  function fail(error: Error) {
     toast.error(error.message || "操作失败，请稍后重试");
   }
 
-  function selectMonth(offset: number) {
-    const next = addMonths(month, offset);
-    if (next > today.slice(0, 7)) return;
+  function changeMonth(offset: number) {
+    const next = moveMonth(month, offset);
     setMonth(next);
     setSelectedDay(`${next}-01`);
   }
 
-  function selectToday() {
-    setMonth(today.slice(0, 7));
-    setSelectedDay(today);
+  function addTask(event: React.FormEvent) {
+    event.preventDefault();
+    const content = taskContent.trim();
+    if (!content) return;
+    createTodo.mutate({ day: selectedDay, payload: { content } }, { onSuccess: () => setTaskContent(""), onError: fail });
   }
 
-  function addTodo(event: React.FormEvent) {
+  function addFixedTask(event: React.FormEvent) {
     event.preventDefault();
-    const next = content.trim();
-    if (!next) return;
-    createTodo.mutate(
-      { content: next },
-      {
-        onSuccess: () => setContent(""),
-        onError: showError,
-      },
-    );
+    const content = fixedContent.trim();
+    if (!content || fixedWeekdays.length === 0) return;
+    createFixed.mutate({ month, content, weekdays: fixedWeekdays }, { onSuccess: () => setFixedContent(""), onError: fail });
+  }
+
+  function toggleWeekday(day: number) {
+    setFixedWeekdays((current) => current.includes(day) ? current.filter((value) => value !== day) : [...current, day].sort((a, b) => a - b));
   }
 
   return (
@@ -256,114 +170,59 @@ export function DailyCheckin({ projectId }: { projectId: number }) {
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon" className="relative" onClick={() => setOpen(true)} aria-label="签到日历">
               {todaySummary?.checked_in ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <ListTodo className="h-4 w-4" />}
-              {(todaySummary?.total_count ?? 0) > 0 && !todaySummary?.checked_in && (
-                <span className="absolute -right-1 -top-1 rounded-full bg-muted px-1 text-[10px] leading-4 text-muted-foreground">
-                  {todaySummary?.completed_count}/{todaySummary?.total_count}
-                </span>
-              )}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{todaySummary?.checked_in ? "今日已签到" : "签到日历"}</TooltipContent>
+          <TooltipContent>签到日历</TooltipContent>
         </Tooltip>
-
-        <DialogContent className="grid w-[calc(100vw-2rem)] max-w-4xl gap-0 overflow-hidden p-0 sm:grid-cols-[minmax(0,1.45fr)_minmax(16rem,0.85fr)]">
-          <div className="min-w-0 p-4 sm:border-r sm:p-5">
-            <DialogHeader className="mb-4 text-left">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <DialogTitle>签到日历</DialogTitle>
-                  <DialogDescription>连续签到 {todaySummary?.current_streak ?? 0} 天</DialogDescription>
-                </div>
-                <Button variant="ghost" size="sm" onClick={selectToday}>今天</Button>
-              </div>
+        <DialogContent className="grid w-[calc(100vw-2rem)] max-w-5xl gap-0 overflow-hidden p-0 lg:grid-cols-[minmax(0,1.45fr)_minmax(19rem,0.9fr)]">
+          <div className="min-w-0 p-4 lg:border-r lg:p-5">
+            <DialogHeader className="mb-3 text-left">
+              <DialogTitle>签到日历</DialogTitle>
+              <DialogDescription>连续签到 {todaySummary?.current_streak ?? 0} 天</DialogDescription>
             </DialogHeader>
-
             <div className="mb-3 flex items-center justify-between">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={() => selectMonth(-1)} aria-label="上个月">
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>上个月</TooltipContent>
-              </Tooltip>
-              <span className="text-sm font-medium">{monthLabel(month)}</span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" disabled={isFutureMonth} onClick={() => selectMonth(1)} aria-label="下个月">
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>下个月</TooltipContent>
-              </Tooltip>
+              <Button variant="ghost" size="icon" onClick={() => changeMonth(-1)} aria-label="上个月"><ChevronLeft className="h-4 w-4" /></Button>
+              <span className="text-sm font-medium">{month.replace("-", " 年 ")} 月</span>
+              <Button variant="ghost" size="icon" onClick={() => changeMonth(1)} aria-label="下个月"><ChevronRight className="h-4 w-4" /></Button>
             </div>
-
             <div className="grid grid-cols-7 border-l border-t">
-              {WEEKDAYS.map((weekday) => (
-                <div key={weekday} className="border-b border-r py-1 text-center text-[10px] text-muted-foreground sm:text-xs">{weekday}</div>
-              ))}
-              {daysForMonth(month).map((cell, index) => (
-                <DayCell
-                  key={cell?.date ?? `blank-${index}`}
-                  cell={cell}
-                  status={cell ? dayStatuses.get(cell.date) : undefined}
-                  selected={cell?.date === selectedDay}
-                  today={today}
-                  disabled={!cell || cell.date > today}
-                  onSelect={() => cell && setSelectedDay(cell.date)}
-                />
-              ))}
+              {WEEKDAYS.map((value) => <div key={value} className="border-b border-r py-1 text-center text-xs text-muted-foreground">{value}</div>)}
+              {calendarCells(month).map((cell, index) => {
+                const status: DailyCheckinDayStatus | undefined = cell ? statusByDate.get(cell.date) : undefined;
+                const progress = status?.total_count ? `${status.completed_count}/${status.total_count}` : "";
+                return cell ? (
+                  <button key={cell.date} type="button" onClick={() => setSelectedDay(cell.date)} className={cn("relative min-h-16 border-b border-r p-1.5 text-left hover:bg-muted/60", selectedDay === cell.date && "bg-muted", today === cell.date && "ring-1 ring-inset ring-primary", status?.checked_in && "bg-primary/10")}>
+                    <span className="text-xs font-medium">{cell.label}</span>
+                    {progress && <span className="absolute bottom-1 left-1.5 text-[10px] text-muted-foreground">{progress}</span>}
+                    {status?.checked_in && <CheckCircle2 className="absolute bottom-1 right-1 h-3.5 w-3.5 text-primary" />}
+                  </button>
+                ) : <div key={`blank-${index}`} className="min-h-16 border-b border-r bg-muted/20" />;
+              })}
             </div>
-          </div>
-
-          <div className="min-w-0 border-t p-4 sm:border-t-0 sm:p-5">
-            <h3 className="text-sm font-medium">{selectedDay}</h3>
-            {isDetailLoading ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">正在加载记录...</p>
-            ) : (
-              <div className="mt-4 space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  {summary?.checked_in ? `已签到，完成 ${completed}/${total} 项` : `完成 ${completed}/${total} 项`}
-                </p>
-
-                {isToday && !summary?.locked && (
-                  <form className="flex gap-2" onSubmit={addTodo}>
-                    <Input value={content} disabled={isPending} maxLength={500} placeholder="添加待办事项" onChange={(event) => setContent(event.target.value)} />
-                    <Button type="submit" size="icon" disabled={isPending || !content.trim()} aria-label="添加待办">
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </form>
-                )}
-
-                {summary?.todos.length ? (
-                  <ul className="max-h-64 overflow-y-auto">
-                    {summary.todos.map((todo) => (
-                      <TodoRow
-                        key={todo.id}
-                        todo={todo}
-                        locked={!isToday || summary.locked}
-                        pending={isPending}
-                        onUpdate={isToday ? (payload) => updateTodo.mutate({ todoId: todo.id, payload }, { onError: showError }) : undefined}
-                        onDelete={isToday ? () => deleteTodo.mutate(todo.id, { onError: showError }) : undefined}
-                      />
+            {month >= today.slice(0, 7) && (
+              <section className="mt-4 border-t pt-4">
+                <h3 className="text-sm font-medium">本月固定待办</h3>
+                <form className="mt-2 space-y-2" onSubmit={addFixedTask}>
+                  <Input value={fixedContent} maxLength={500} placeholder="例如：完成 1000 字" onChange={(event) => setFixedContent(event.target.value)} />
+                  <div className="flex flex-wrap gap-1">
+                    {TEMPLATE_WEEKDAYS.map((label, index) => (
+                      <Button key={label} type="button" size="sm" variant={fixedWeekdays.includes(index) ? "default" : "outline"} onClick={() => toggleWeekday(index)}>{label}</Button>
                     ))}
-                  </ul>
-                ) : (
-                  <p className="py-6 text-center text-sm text-muted-foreground">这一天没有记录。</p>
-                )}
-
-                {summary?.checked_in ? (
-                  <div className="flex items-center gap-2 border-t pt-4 text-sm font-medium text-primary">
-                    <CheckCircle2 className="h-4 w-4" />
-                    {isToday ? `今日已签到，连续 ${summary.current_streak} 天` : "当日已签到"}
                   </div>
-                ) : isToday ? (
-                  <Button className="w-full" disabled={!canCheckIn || isPending} onClick={() => checkin.mutate(undefined, { onError: showError })}>
-                    {checkin.isPending ? "正在签到..." : canCheckIn ? "完成今日签到" : total === 0 ? "请先添加待办" : `完成剩余 ${remaining} 项后签到`}
-                  </Button>
-                ) : null}
-              </div>
+                  <Button type="submit" size="sm" disabled={pending || !fixedContent.trim() || fixedWeekdays.length === 0}>添加固定待办</Button>
+                </form>
+                {fixedTodos.length > 0 && <ul className="mt-3 space-y-1">{fixedTodos.map((item) => <li key={item.id} className="flex items-center justify-between gap-2 text-sm"><span className="min-w-0 truncate">{item.content}</span><Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteFixed.mutate({ templateId: item.id, month }, { onError: fail })} aria-label="删除固定待办"><Trash2 className="h-3.5 w-3.5" /></Button></li>)}</ul>}
+              </section>
             )}
+          </div>
+          <div className="min-w-0 border-t p-4 lg:border-t-0 lg:p-5">
+            <h3 className="text-sm font-medium">{selectedDay}</h3>
+            {isLoading ? <p className="py-8 text-center text-sm text-muted-foreground">正在加载记录...</p> : <div className="mt-3 space-y-3">
+              <p className="text-sm text-muted-foreground">完成 {completed}/{total} 项{summary?.checked_in ? "，已签到" : ""}</p>
+              {isEditable && <form className="flex gap-2" onSubmit={addTask}><Input value={taskContent} maxLength={500} placeholder={isFuture ? "规划未来待办" : "添加待办事项"} onChange={(event) => setTaskContent(event.target.value)} /><Button type="submit" size="icon" disabled={pending || !taskContent.trim()} aria-label="添加待办"><Plus className="h-4 w-4" /></Button></form>}
+              {summary?.todos.length ? <ul className="max-h-72 overflow-y-auto">{summary.todos.map((todo) => <TodoItem key={todo.id} todo={todo} canEdit={isEditable} canComplete={isToday && isEditable} pending={pending} onUpdate={(payload) => updateTodo.mutate({ todoId: todo.id, day: selectedDay, payload }, { onError: fail })} onDelete={() => deleteTodo.mutate({ todoId: todo.id, day: selectedDay }, { onError: fail })} />)}</ul> : <p className="py-6 text-center text-sm text-muted-foreground">这一天没有待办。</p>}
+              {summary?.checked_in ? <div className="flex items-center gap-2 border-t pt-3 text-sm font-medium text-primary"><CheckCircle2 className="h-4 w-4" />当日已签到</div> : isToday ? <Button className="w-full" disabled={!canCheckIn || pending} onClick={() => checkin.mutate(undefined, { onError: fail })}>{canCheckIn ? "完成今日签到" : total === 0 ? "请先添加待办" : "完成全部待办后签到"}</Button> : null}
+            </div>}
           </div>
         </DialogContent>
       </Dialog>

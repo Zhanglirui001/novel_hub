@@ -16,10 +16,6 @@ def utc_today() -> str:
     return datetime.utcnow().date().isoformat()
 
 
-def utc_today() -> str:
-    return datetime.utcnow().date().isoformat()
-
-
 def _base_connect(db: str | None = None):
     return pymysql.connect(
         host=config.settings.mysql_host,
@@ -83,49 +79,6 @@ def get_conn():
         raise
     else:
         _release(conn)
-
-
-def _column_exists(cursor, table: str, column: str) -> bool:
-    cursor.execute(f"SHOW COLUMNS FROM `{table}` LIKE %s", (column,))
-    return cursor.fetchone() is not None
-
-
-def _index_exists(cursor, table: str, index: str) -> bool:
-    cursor.execute(f"SHOW INDEX FROM `{table}` WHERE Key_name = %s", (index,))
-    return cursor.fetchone() is not None
-
-
-def _ensure_chapter_hierarchy(cursor) -> None:
-    sort_added = False
-    if not _column_exists(cursor, "chapters", "group_title"):
-        cursor.execute(
-            "ALTER TABLE chapters ADD COLUMN group_title VARCHAR(255) NOT NULL DEFAULT '默认卷' AFTER title"
-        )
-    if not _column_exists(cursor, "chapters", "sort_order"):
-        cursor.execute(
-            "ALTER TABLE chapters ADD COLUMN sort_order INT NOT NULL DEFAULT 0 AFTER content"
-        )
-        sort_added = True
-
-    if sort_added:
-        cursor.execute("SELECT id, project_id FROM chapters ORDER BY project_id ASC, id ASC")
-        rows = cursor.fetchall()
-        current_project = None
-        order = 0
-        for row in rows:
-            if row["project_id"] != current_project:
-                current_project = row["project_id"]
-                order = 0
-            cursor.execute(
-                "UPDATE chapters SET sort_order = %s WHERE id = %s",
-                (order, row["id"]),
-            )
-            order += 1
-
-    if not _index_exists(cursor, "chapters", "idx_chapters_project_group_order"):
-        cursor.execute(
-            "CREATE INDEX idx_chapters_project_group_order ON chapters(project_id, group_title, sort_order, id)"
-        )
 
 
 def _column_exists(cursor, table: str, column: str) -> bool:
