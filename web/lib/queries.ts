@@ -12,6 +12,8 @@ import type {
   TaskType,
   ChatMessageCreateRequest,
   ChatSessionCreateRequest,
+  DailyTodoCreateRequest,
+  DailyTodoUpdateRequest,
 } from "./types";
 
 export function useProjects() {
@@ -31,6 +33,64 @@ export function useProject(projectId: number) {
     queryKey: ["project", projectId],
     queryFn: () => api.getProject(projectId),
     enabled: Number.isFinite(projectId),
+  });
+}
+
+export function useDailyCheckin(projectId: number, day?: string) {
+  return useQuery({
+    queryKey: ["daily-checkin", projectId, day ?? "today"],
+    queryFn: () => (day ? api.getDailyCheckinDay(projectId, day) : api.getDailyCheckin(projectId)),
+    enabled: Number.isFinite(projectId),
+  });
+}
+
+export function useDailyCheckinMonth(projectId: number, month: string) {
+  return useQuery({
+    queryKey: ["daily-checkin-month", projectId, month],
+    queryFn: () => api.getDailyCheckinMonth(projectId, month),
+    enabled: Number.isFinite(projectId) && /^\d{4}-\d{2}$/.test(month),
+  });
+}
+
+function useDailyCheckinCache(projectId: number) {
+  const queryClient = useQueryClient();
+  return (summary: Awaited<ReturnType<typeof api.getDailyCheckin>>) => {
+    queryClient.setQueryData(["daily-checkin", projectId, summary.date], summary);
+    queryClient.setQueryData(["daily-checkin", projectId, "today"], summary);
+    queryClient.invalidateQueries({ queryKey: ["daily-checkin-month", projectId] });
+  };
+}
+
+export function useCreateDailyTodo(projectId: number) {
+  const setSummary = useDailyCheckinCache(projectId);
+  return useMutation({
+    mutationFn: (payload: DailyTodoCreateRequest) => api.createDailyTodo(projectId, payload),
+    onSuccess: setSummary,
+  });
+}
+
+export function useUpdateDailyTodo(projectId: number) {
+  const setSummary = useDailyCheckinCache(projectId);
+  return useMutation({
+    mutationFn: ({ todoId, payload }: { todoId: number; payload: DailyTodoUpdateRequest }) =>
+      api.updateDailyTodo(todoId, projectId, payload),
+    onSuccess: setSummary,
+  });
+}
+
+export function useDeleteDailyTodo(projectId: number) {
+  const setSummary = useDailyCheckinCache(projectId);
+  return useMutation({
+    mutationFn: (todoId: number) => api.deleteDailyTodo(todoId, projectId),
+    onSuccess: setSummary,
+  });
+}
+
+export function useCreateDailyCheckin(projectId: number) {
+  const setSummary = useDailyCheckinCache(projectId);
+  return useMutation({
+    mutationFn: () => api.createDailyCheckin(projectId),
+    onSuccess: setSummary,
   });
 }
 

@@ -12,6 +12,14 @@ def utc_now() -> str:
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
 
+def utc_today() -> str:
+    return datetime.utcnow().date().isoformat()
+
+
+def utc_today() -> str:
+    return datetime.utcnow().date().isoformat()
+
+
 def _base_connect(db: str | None = None):
     return pymysql.connect(
         host=config.settings.mysql_host,
@@ -304,6 +312,58 @@ def init_db() -> None:
                 source VARCHAR(64) NOT NULL,
                 created_at VARCHAR(32) NOT NULL,
                 INDEX idx_timeline_project(project_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS daily_todos (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                todo_date DATE NOT NULL,
+                content VARCHAR(500) NOT NULL,
+                completed BOOLEAN NOT NULL DEFAULT FALSE,
+                template_id INT NULL,
+                is_customized BOOLEAN NOT NULL DEFAULT FALSE,
+                sort_order INT NOT NULL DEFAULT 0,
+                created_at VARCHAR(32) NOT NULL,
+                completed_at VARCHAR(32) NULL,
+                INDEX idx_daily_todos_project_date_order(project_id, todo_date, sort_order, id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS monthly_fixed_todos (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                month_key CHAR(7) NOT NULL,
+                content VARCHAR(500) NOT NULL,
+                weekdays VARCHAR(20) NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_monthly_fixed_todos_project_month(project_id, month_key)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        for statement in (
+            "ALTER TABLE daily_todos ADD COLUMN template_id INT NULL",
+            "ALTER TABLE daily_todos ADD COLUMN is_customized BOOLEAN NOT NULL DEFAULT FALSE",
+        ):
+            try:
+                c.execute(statement)
+            except pymysql.err.OperationalError as exc:
+                if exc.args[0] != 1060:
+                    raise
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS daily_checkins (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                checkin_date DATE NOT NULL,
+                completed_at VARCHAR(32) NOT NULL,
+                UNIQUE KEY uq_daily_checkins_project_date(project_id, checkin_date),
+                INDEX idx_daily_checkins_project_date(project_id, checkin_date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )

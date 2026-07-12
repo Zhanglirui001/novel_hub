@@ -12,6 +12,7 @@ import { useProject } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { AssistantDock } from "./assistant-dock";
 import { ChapterRail } from "./chapter-rail";
+import { DailyCheckin } from "./daily-checkin";
 import { ChatPanel } from "./chat-panel";
 import { EditorPane } from "./editor-pane";
 import { useWorkspace } from "./workspace-context";
@@ -111,7 +112,10 @@ export function WorkspaceShell() {
             <h1 className="display-title text-lg">{project?.name ?? "作品"}</h1>
           )}
         </div>
-        <ThemePicker />
+        <div className="flex items-center gap-1">
+          <DailyCheckin projectId={projectId} />
+          <ThemePicker />
+        </div>
       </header>
 
       {/* 三栏 */}

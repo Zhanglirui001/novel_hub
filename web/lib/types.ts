@@ -10,6 +10,49 @@ export interface Project {
   created_at: string;
 }
 
+export interface DailyTodo {
+  id: number;
+  content: string;
+  completed: boolean;
+  sort_order: number;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface DailyCheckinSummary {
+  project_id: number;
+  date: string;
+  todos: DailyTodo[];
+  total_count: number;
+  completed_count: number;
+  checked_in: boolean;
+  locked: boolean;
+  current_streak: number;
+}
+
+export interface DailyCheckinDayStatus {
+  date: string;
+  total_count: number;
+  completed_count: number;
+  checked_in: boolean;
+}
+
+export interface DailyCheckinMonthSummary {
+  project_id: number;
+  month: string;
+  today: string;
+  days: DailyCheckinDayStatus[];
+}
+
+export interface DailyTodoCreateRequest {
+  content: string;
+}
+
+export interface DailyTodoUpdateRequest {
+  content?: string;
+  completed?: boolean;
+}
+
 export interface ChapterSummary {
   id: number;
   title: string;
