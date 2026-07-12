@@ -136,3 +136,77 @@ class ChatMessageCreatePayload(BaseModel):
     active_chapter_id: int | None = None
     selection_text: str | None = None
 
+
+class InspirationCardCreatePayload(BaseModel):
+    card_type: str = Field(default="idea", min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=255)
+    content: str = ""
+    tags: list[str] = Field(default_factory=list)
+    color: str = Field(default="amber", max_length=32)
+
+
+class InspirationCardUpdatePayload(BaseModel):
+    card_type: str | None = Field(default=None, min_length=1, max_length=64)
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    content: str | None = None
+    tags: list[str] | None = None
+    color: str | None = Field(default=None, max_length=32)
+
+
+class InspirationBoardCreatePayload(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str = ""
+
+
+class InspirationBoardUpdatePayload(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+
+
+class InspirationNodePayload(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    card_id: int | None = None
+    node_type: Literal["card", "annotation"]
+    position_x: float = 0
+    position_y: float = 0
+    width: float | None = None
+    height: float | None = None
+    z_index: int = 0
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class InspirationEdgePayload(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    source_node_id: str = Field(min_length=1, max_length=64)
+    target_node_id: str = Field(min_length=1, max_length=64)
+    edge_type: str = Field(default="relation", min_length=1, max_length=32)
+    label: str = Field(default="", max_length=255)
+    style: dict[str, Any] = Field(default_factory=dict)
+
+
+class InspirationGraphPatchPayload(BaseModel):
+    expected_graph_version: int = Field(ge=1)
+    viewport: dict[str, float] = Field(default_factory=dict)
+    nodes: list[InspirationNodePayload] = Field(default_factory=list)
+    deleted_node_ids: list[str] = Field(default_factory=list)
+    edges: list[InspirationEdgePayload] = Field(default_factory=list)
+    deleted_edge_ids: list[str] = Field(default_factory=list)
+
+
+class InspirationDiscussionPayload(BaseModel):
+    content: str = Field(min_length=1)
+    selected_node_ids: list[str] = Field(default_factory=list)
+
+
+class InspirationProposalActionPayload(BaseModel):
+    action_type: Literal["create_card", "create_edge"]
+    card: InspirationCardCreatePayload | None = None
+    source_node_id: str | None = Field(default=None, max_length=64)
+    target_node_id: str | None = Field(default=None, max_length=64)
+    label: str = Field(default="", max_length=255)
+
+
+class InspirationProposalCreatePayload(BaseModel):
+    base_graph_version: int = Field(ge=1)
+    actions: list[InspirationProposalActionPayload] = Field(min_length=1)
+

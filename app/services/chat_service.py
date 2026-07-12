@@ -224,6 +224,62 @@ class ChatService:
 
         return _generate()
 
+    def stream_inspiration_message(self, session_id: int, content: str, inspiration_context: dict):
+        """围绕灵感画板进行流式讨论，普通章节聊天的请求与提示词保持不变。"""
+        text = content.strip()
+        if not text:
+            raise ValueError("content 不能为空")
+        session = self._ensure_session(session_id)
+        context = {"inspiration": inspiration_context}
+        llm_messages = self._build_inspiration_messages(session_id, text, inspiration_context)
+
+        def _generate():
+            pieces: list[str] = []
+            try:
+                for piece in build_model_client().stream_chat(llm_messages):
+                    pieces.append(piece)
+                    yield {"type": "delta", "text": piece}
+            except Exception as exc:
+                yield {"type": "error", "message": str(exc)}
+                return
+
+            assistant_content = "".join(pieces).strip()
+            if not assistant_content:
+                yield {"type": "error", "message": "模型返回为空"}
+                return
+            result = self._persist_exchange(session, text, assistant_content, context)
+            yield {"type": "done", **result}
+
+        return _generate()
+
+    def stream_inspiration_message(self, session_id: int, content: str, inspiration_context: dict):
+        """围绕灵感画板进行流式讨论，普通章节聊天的请求与提示词保持不变。"""
+        text = content.strip()
+        if not text:
+            raise ValueError("content 不能为空")
+        session = self._ensure_session(session_id)
+        context = {"inspiration": inspiration_context}
+        llm_messages = self._build_inspiration_messages(session_id, text, inspiration_context)
+
+        def _generate():
+            pieces: list[str] = []
+            try:
+                for piece in build_model_client().stream_chat(llm_messages):
+                    pieces.append(piece)
+                    yield {"type": "delta", "text": piece}
+            except Exception as exc:
+                yield {"type": "error", "message": str(exc)}
+                return
+
+            assistant_content = "".join(pieces).strip()
+            if not assistant_content:
+                yield {"type": "error", "message": "模型返回为空"}
+                return
+            result = self._persist_exchange(session, text, assistant_content, context)
+            yield {"type": "done", **result}
+
+        return _generate()
+
     def _persist_exchange(self, session: dict, user_text: str, assistant_content: str, context: dict) -> dict:
         """将一轮用户/助手消息写库并返回与 send_message 一致的结果结构。"""
         session_id = session["id"]
@@ -324,6 +380,47 @@ class ChatService:
             "context": context,
             "created_at": row["created_at"],
         }
+
+    def _build_inspiration_messages(self, session_id: int, user_text: str, inspiration_context: dict) -> list[dict[str, str]]:
+        """将当前画板快照限定在独立会话的系统上下文中。"""
+        cards = inspiration_context.get("cards") or []
+        edges = inspiration_context.get("edges") or []
+        selected = inspiration_context.get("selectedNodeIds") or []
+        card_lines = []
+        for card in cards:
+            tags = "、".join(card.get("tags") or [])
+            card_lines.append(
+                f"- 卡片#{card.get('id')} [{card.get('card_type')}] {card.get('title')}"
+                f"（标签：{tags or '无'}）\n{card.get('content') or ''}"
+            )
+        edge_lines = [
+            f"- {edge.get('source_node_id')} -> {edge.get('target_node_id')}：{edge.get('label') or edge.get('edge_type')}"
+            for edge in edges
+        ]
+        board_summary = "\n".join(
+            [
+                f"当前灵感画板：{inspiration_context.get('boardTitle') or '未命名画板'}",
+                f"画板版本：{inspiration_context.get('graphVersion')}",
+                f"选中节点：{', '.join(selected) if selected else '无'}",
+                "当前可见卡片：",
+                "\n".join(card_lines) or "（暂无卡片）",
+                "当前关系：",
+                "\n".join(edge_lines) or "（暂无关系）",
+            ]
+        )
+        prompt = (
+            "你是中文小说创作中的灵感策划助手。你必须围绕作者提供的灵感画板，"
+            "帮助梳理剧情、人物动机、冲突、伏笔和可能的结构。输出自然、清晰的中文讨论，"
+            "不要假装已经修改作者的画板，也不要输出代码或 JSON。"
+        )
+        messages: list[dict[str, str]] = [{"role": "system", "content": prompt + "\n\n" + board_summary}]
+        for row in self._recent_history(session_id):
+            role = row["role"] if row["role"] in ("user", "assistant") else "user"
+            message = (row.get("content") or "").strip()
+            if message:
+                messages.append({"role": role, "content": message})
+        messages.append({"role": "user", "content": user_text})
+        return messages
 
     def _build_llm_messages(self, session_id: int, user_text: str, context: dict) -> list[dict[str, str]]:
         """构造发给模型的消息列表：系统提示 + 场景说明 + 历史消息 + 本次提问。"""

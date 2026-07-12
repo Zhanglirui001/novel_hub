@@ -19,6 +19,13 @@ from app.schemas import (
     MonthlyFixedTodoCreatePayload,
     MonthlyFixedTodoUpdatePayload,
     DraftPayload,
+    InspirationBoardCreatePayload,
+    InspirationBoardUpdatePayload,
+    InspirationCardCreatePayload,
+    InspirationCardUpdatePayload,
+    InspirationDiscussionPayload,
+    InspirationGraphPatchPayload,
+    InspirationProposalCreatePayload,
     InlineAnalyzePayload,
     InlineRevisePayload,
     LlmSettingsPayload,
@@ -27,7 +34,8 @@ from app.schemas import (
     ProjectCreate,
     StyleProfilePayload,
 )
-from app.services import ChatService, ConsistencyGuard, GenerationService, LoreService, StyleService
+from app.services import ChatService, ConsistencyGuard, GenerationService, InspirationService, LoreService, StyleService
+from app.services.inspiration_service import GraphConflictError
 from app.services.checkin_service import CheckinService
 from app.services import backup_service, settings_service
 
@@ -50,6 +58,7 @@ style_service = StyleService()
 generation_service = GenerationService()
 consistency_guard = ConsistencyGuard()
 chat_service = ChatService()
+inspiration_service = InspirationService()
 checkin_service = CheckinService()
 
 
@@ -91,6 +100,130 @@ def get_project(project_id: int):
     if not row:
         raise HTTPException(status_code=404, detail=f"project_id={project_id} 不存在")
     return row
+
+
+@app.get("/projects/{project_id}/inspiration/cards")
+def list_inspiration_cards(project_id: int, search: str = "", card_type: str = ""):
+    return inspiration_service.list_cards(project_id, search, card_type)
+
+
+@app.post("/projects/{project_id}/inspiration/cards")
+def create_inspiration_card(project_id: int, payload: InspirationCardCreatePayload):
+    try:
+        return inspiration_service.create_card(project_id, payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.patch("/projects/{project_id}/inspiration/cards/{card_id}")
+def update_inspiration_card(project_id: int, card_id: int, payload: InspirationCardUpdatePayload):
+    try:
+        return inspiration_service.update_card(project_id, card_id, payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "不属于" in str(exc) else 400, detail=str(exc)) from exc
+
+
+@app.delete("/projects/{project_id}/inspiration/cards/{card_id}")
+def delete_inspiration_card(project_id: int, card_id: int):
+    try:
+        return inspiration_service.delete_card(project_id, card_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/projects/{project_id}/inspiration/boards")
+def list_inspiration_boards(project_id: int):
+    return inspiration_service.list_boards(project_id)
+
+
+@app.post("/projects/{project_id}/inspiration/boards")
+def create_inspiration_board(project_id: int, payload: InspirationBoardCreatePayload):
+    try:
+        return inspiration_service.create_board(project_id, payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/projects/{project_id}/inspiration/boards/{board_id}")
+def get_inspiration_board(project_id: int, board_id: int):
+    try:
+        return inspiration_service.get_board_graph(project_id, board_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.patch("/projects/{project_id}/inspiration/boards/{board_id}")
+def update_inspiration_board(project_id: int, board_id: int, payload: InspirationBoardUpdatePayload):
+    try:
+        return inspiration_service.update_board(project_id, board_id, payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "不属于" in str(exc) else 400, detail=str(exc)) from exc
+
+
+@app.delete("/projects/{project_id}/inspiration/boards/{board_id}")
+def delete_inspiration_board(project_id: int, board_id: int):
+    try:
+        return inspiration_service.delete_board(project_id, board_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.patch("/projects/{project_id}/inspiration/boards/{board_id}/graph")
+def patch_inspiration_graph(project_id: int, board_id: int, payload: InspirationGraphPatchPayload):
+    try:
+        return inspiration_service.patch_graph(project_id, board_id, payload.model_dump())
+    except GraphConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "不属于" in str(exc) else 400, detail=str(exc)) from exc
+
+
+@app.post("/projects/{project_id}/inspiration/boards/{board_id}/proposals")
+def create_inspiration_proposal(project_id: int, board_id: int, payload: InspirationProposalCreatePayload):
+    try:
+        return inspiration_service.create_proposal(project_id, board_id, None, payload.model_dump())
+    except GraphConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "不属于" in str(exc) else 400, detail=str(exc)) from exc
+
+
+@app.post("/projects/{project_id}/inspiration/proposals/{proposal_id}/apply")
+def apply_inspiration_proposal(project_id: int, proposal_id: int):
+    try:
+        return inspiration_service.apply_proposal(project_id, proposal_id)
+    except GraphConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "不属于" in str(exc) else 400, detail=str(exc)) from exc
+
+
+@app.post("/projects/{project_id}/inspiration/proposals/{proposal_id}/dismiss")
+def dismiss_inspiration_proposal(project_id: int, proposal_id: int):
+    try:
+        return inspiration_service.dismiss_proposal(project_id, proposal_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "不属于" in str(exc) else 400, detail=str(exc)) from exc
+
+
+@app.post("/projects/{project_id}/inspiration/boards/{board_id}/discussion/stream")
+def stream_inspiration_discussion(project_id: int, board_id: int, payload: InspirationDiscussionPayload):
+    try:
+        session_id = inspiration_service.get_or_create_board_chat_session(project_id, board_id, chat_service.create_session)
+        context = inspiration_service.build_discussion_context(project_id, board_id, payload.selected_node_ids)
+        events = chat_service.stream_inspiration_message(session_id, payload.content, context)
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "不属于" in str(exc) else 400, detail=str(exc)) from exc
+
+    def event_stream():
+        for event in events:
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/projects/{project_id}/chapters")

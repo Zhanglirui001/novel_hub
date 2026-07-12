@@ -344,3 +344,115 @@ export interface ChatSessionClearResponse {
   cleared: boolean;
   updated_at: string;
 }
+
+export type InspirationCardType = "idea" | "character" | "scene" | "conflict" | "question" | "research" | "note";
+
+export interface InspirationCard {
+  id: number;
+  project_id: number;
+  card_type: InspirationCardType | string;
+  title: string;
+  content: string;
+  tags: string[];
+  color: string;
+  origin: "manual" | "ai";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InspirationCardPayload {
+  card_type: InspirationCardType | string;
+  title: string;
+  content: string;
+  tags: string[];
+  color: string;
+}
+
+export interface InspirationBoardSummary {
+  id: number;
+  project_id: number;
+  title: string;
+  description: string;
+  viewport: InspirationViewport;
+  graph_version: number;
+  node_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InspirationViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface InspirationBoardNode {
+  id: string;
+  board_id: number;
+  card_id: number | null;
+  node_type: "card" | "annotation";
+  position_x: number;
+  position_y: number;
+  width: number | null;
+  height: number | null;
+  z_index: number;
+  data: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InspirationBoardEdge {
+  id: string;
+  board_id: number;
+  source_node_id: string;
+  target_node_id: string;
+  edge_type: string;
+  label: string;
+  style: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InspirationBoardGraph extends InspirationBoardSummary {
+  nodes: InspirationBoardNode[];
+  edges: InspirationBoardEdge[];
+}
+
+export interface InspirationGraphPatch {
+  expected_graph_version: number;
+  viewport: InspirationViewport;
+  nodes: InspirationBoardNode[];
+  deleted_node_ids: string[];
+  edges: InspirationBoardEdge[];
+  deleted_edge_ids: string[];
+}
+
+export interface InspirationProposalAction {
+  action_type: "create_card" | "create_edge";
+  card?: InspirationCardPayload;
+  source_node_id?: string;
+  target_node_id?: string;
+  label?: string;
+}
+
+export interface InspirationProposal {
+  id: number;
+  project_id: number;
+  board_id: number;
+  assistant_message_id: number | null;
+  base_graph_version: number;
+  actions: InspirationProposalAction[];
+  status: "draft" | "applied" | "dismissed";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InspirationDiscussionPayload {
+  content: string;
+  selected_node_ids: string[];
+}
+
+export type InspirationDiscussionEvent =
+  | { type: "delta"; text: string }
+  | { type: "done"; session: ChatSessionSummary; messages: ChatSessionMessage[] }
+  | { type: "error"; message: string };

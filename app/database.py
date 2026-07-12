@@ -359,3 +359,195 @@ def init_db() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inspiration_cards (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                card_type VARCHAR(64) NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                content TEXT NOT NULL,
+                tags_json TEXT NOT NULL,
+                color VARCHAR(32) NOT NULL DEFAULT 'amber',
+                origin VARCHAR(32) NOT NULL DEFAULT 'manual',
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_inspiration_cards_project_updated(project_id, updated_at, id),
+                INDEX idx_inspiration_cards_project_type(project_id, card_type)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inspiration_boards (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                description TEXT NOT NULL,
+                viewport_json TEXT NOT NULL,
+                graph_version INT NOT NULL DEFAULT 1,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_inspiration_boards_project_updated(project_id, updated_at, id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inspiration_board_nodes (
+                id VARCHAR(64) PRIMARY KEY,
+                board_id INT NOT NULL,
+                card_id INT NULL,
+                node_type VARCHAR(32) NOT NULL,
+                position_x DOUBLE NOT NULL DEFAULT 0,
+                position_y DOUBLE NOT NULL DEFAULT 0,
+                width DOUBLE NULL,
+                height DOUBLE NULL,
+                z_index INT NOT NULL DEFAULT 0,
+                data_json MEDIUMTEXT NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_inspiration_nodes_board(board_id),
+                INDEX idx_inspiration_nodes_card(card_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inspiration_board_edges (
+                id VARCHAR(64) PRIMARY KEY,
+                board_id INT NOT NULL,
+                source_node_id VARCHAR(64) NOT NULL,
+                target_node_id VARCHAR(64) NOT NULL,
+                edge_type VARCHAR(32) NOT NULL DEFAULT 'relation',
+                label VARCHAR(255) NOT NULL DEFAULT '',
+                style_json TEXT NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_inspiration_edges_board(board_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inspiration_board_chat_sessions (
+                board_id INT PRIMARY KEY,
+                chat_session_id INT NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_inspiration_board_chat_session(chat_session_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inspiration_ai_proposals (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                board_id INT NOT NULL,
+                assistant_message_id INT NULL,
+                base_graph_version INT NOT NULL,
+                actions_json MEDIUMTEXT NOT NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'draft',
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_inspiration_proposals_board_status(board_id, status, id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inspiration_cards (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                card_type VARCHAR(64) NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                content TEXT NOT NULL,
+                tags_json TEXT NOT NULL,
+                color VARCHAR(32) NOT NULL DEFAULT 'amber',
+                origin VARCHAR(32) NOT NULL DEFAULT 'manual',
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_inspiration_cards_project_updated(project_id, updated_at, id),
+                INDEX idx_inspiration_cards_project_type(project_id, card_type)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inspiration_boards (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                description TEXT NOT NULL,
+                viewport_json TEXT NOT NULL,
+                graph_version INT NOT NULL DEFAULT 1,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_inspiration_boards_project_updated(project_id, updated_at, id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inspiration_board_nodes (
+                id VARCHAR(64) PRIMARY KEY,
+                board_id INT NOT NULL,
+                card_id INT NULL,
+                node_type VARCHAR(32) NOT NULL,
+                position_x DOUBLE NOT NULL DEFAULT 0,
+                position_y DOUBLE NOT NULL DEFAULT 0,
+                width DOUBLE NULL,
+                height DOUBLE NULL,
+                z_index INT NOT NULL DEFAULT 0,
+                data_json MEDIUMTEXT NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_inspiration_nodes_board(board_id),
+                INDEX idx_inspiration_nodes_card(card_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inspiration_board_edges (
+                id VARCHAR(64) PRIMARY KEY,
+                board_id INT NOT NULL,
+                source_node_id VARCHAR(64) NOT NULL,
+                target_node_id VARCHAR(64) NOT NULL,
+                edge_type VARCHAR(32) NOT NULL DEFAULT 'relation',
+                label VARCHAR(255) NOT NULL DEFAULT '',
+                style_json TEXT NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_inspiration_edges_board(board_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inspiration_board_chat_sessions (
+                board_id INT PRIMARY KEY,
+                chat_session_id INT NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_inspiration_board_chat_session(chat_session_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS inspiration_ai_proposals (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                board_id INT NOT NULL,
+                assistant_message_id INT NULL,
+                base_graph_version INT NOT NULL,
+                actions_json MEDIUMTEXT NOT NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'draft',
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_inspiration_proposals_board_status(board_id, status, id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )

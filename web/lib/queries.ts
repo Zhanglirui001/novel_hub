@@ -14,6 +14,8 @@ import type {
   ChatSessionCreateRequest,
   DailyTodoCreateRequest,
   DailyTodoUpdateRequest,
+  InspirationCardPayload,
+  InspirationGraphPatch,
 } from "./types";
 
 export function useProjects() {
@@ -367,6 +369,77 @@ export function useClearChatSession(projectId: number, sessionId: number | null)
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["chat-sessions", projectId] });
       queryClient.setQueryData(["chat-messages", sessionId], []);
+    },
+  });
+}
+
+export function useInspirationCards(projectId: number, filters?: { search?: string; cardType?: string }) {
+  return useQuery({
+    queryKey: ["inspiration-cards", projectId, filters?.search ?? "", filters?.cardType ?? ""],
+    queryFn: () => api.listInspirationCards(projectId, filters),
+    enabled: Number.isFinite(projectId),
+  });
+}
+
+export function useCreateInspirationCard(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: InspirationCardPayload) => api.createInspirationCard(projectId, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inspiration-cards", projectId] }),
+  });
+}
+
+export function useUpdateInspirationCard(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ cardId, payload }: { cardId: number; payload: Partial<InspirationCardPayload> }) =>
+      api.updateInspirationCard(projectId, cardId, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inspiration-cards", projectId] }),
+  });
+}
+
+export function useDeleteInspirationCard(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (cardId: number) => api.deleteInspirationCard(projectId, cardId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inspiration-cards", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["inspiration-boards", projectId] });
+    },
+  });
+}
+
+export function useInspirationBoards(projectId: number) {
+  return useQuery({
+    queryKey: ["inspiration-boards", projectId],
+    queryFn: () => api.listInspirationBoards(projectId),
+    enabled: Number.isFinite(projectId),
+  });
+}
+
+export function useCreateInspirationBoard(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { title: string; description?: string }) => api.createInspirationBoard(projectId, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inspiration-boards", projectId] }),
+  });
+}
+
+export function useInspirationBoard(projectId: number, boardId: number | null) {
+  return useQuery({
+    queryKey: ["inspiration-board", projectId, boardId],
+    queryFn: () => api.getInspirationBoard(projectId, boardId as number),
+    enabled: Number.isFinite(projectId) && boardId !== null,
+  });
+}
+
+export function usePatchInspirationGraph(projectId: number, boardId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: InspirationGraphPatch) => api.patchInspirationGraph(projectId, boardId as number, payload),
+    onSuccess: (graph) => {
+      queryClient.setQueryData(["inspiration-board", projectId, boardId], graph);
+      queryClient.invalidateQueries({ queryKey: ["inspiration-boards", projectId] });
     },
   });
 }

@@ -763,3 +763,37 @@ One note on security: the streaming endpoint is unauthenticated, same as every o
 
 ### 深度功能开发
 
+
+
+> 关于灵感画廊的idea，我希望在该项目中集成灵感画廊，可以通过与ai对话讨论或者绘制添加关键信息树等方式，实现对小说剧情的灵活设计、灵感记录。希望支持将灵感画廊的内容保存为可编辑的内容卡片，也可以支持高自由度编辑的画板，AI agent深入介入其中，辅助灵感整理与讨论。
+
+已集成项目级“灵感工作台”，入口位于作品工作区顶栏的“灵感”，路由为 `/projects/[id]/inspiration`。
+
+主要内容：
+
+- 后端新增灵感卡片、画板、节点、连线、AI 提案及画板聊天会话的数据表与项目隔离服务。
+- 新增卡片 CRUD、画板 CRUD、带版本冲突保护的画板图保存、AI 提案创建/应用/驳回，以及板级流式讨论 API。
+- 独立的 AI 讨论上下文会包含当前画板、选中节点、卡片摘要和关系图，不会影响原有章节聊天。
+- 前端采用 `@xyflow/react` 实现无限画布、拖拽、连线、缩放、缩略图和画布视口持久化。
+- 提供卡片画廊、搜索、卡片编辑、画板注释、选中卡片检查器、AI 讨论与“整理为提案”确认流程。
+- 提案应用后才会创建 AI 卡片，避免模型直接改写作者的画板内容。
+
+关键实现位置：
+
+- [数据库与表初始化](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/database.py)
+- [灵感领域服务](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/inspiration_service.py)
+- [灵感 API 路由](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/api.py)
+- [画板 AI 对话](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/chat_service.py)
+- [灵感工作台](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/inspiration/inspiration-studio.tsx)
+- [React Flow 画板](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/inspiration/board-canvas.tsx)
+- [灵感页面路由](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/app/projects/[id]/inspiration/page.tsx)
+- [灵感服务测试](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/tests/test_inspiration_service.py)
+
+验证完成：
+
+- `python -m compileall app` 通过。
+- `PYTHONPATH=. python tests/test_core.py`
+- `PYTHONPATH=. python tests/test_checkin_service.py`
+- `PYTHONPATH=. python tests/test_inspiration_service.py`
+- `web` 下 `npm run build` 通过，包含 `/projects/[id]/inspiration` 路由。
+- API 的 OpenAPI 服务在 `http://127.0.0.1:8000/openapi.json` 返回 `200`。

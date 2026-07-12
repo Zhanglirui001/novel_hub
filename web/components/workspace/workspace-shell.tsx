@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ChevronLeft, PanelLeft } from "lucide-react";
+import { ChevronLeft, Network, PanelLeft } from "lucide-react";
 
 import { ThemePicker } from "@/components/theme-picker";
 import { Button } from "@/components/ui/button";
@@ -111,6 +111,18 @@ export function WorkspaceShell() {
           ) : (
             <h1 className="display-title text-lg">{project?.name ?? "作品"}</h1>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 border-teal-200 bg-teal-50 px-2.5 text-teal-800 hover:border-teal-300 hover:bg-teal-100 hover:text-teal-950"
+            asChild
+          >
+            <Link href={`/projects/${projectId}/inspiration`} aria-label="打开灵感画板">
+              <Network className="size-3.5" />
+              <span>灵感</span>
+              <span className="hidden text-[11px] text-teal-600 sm:inline">画板</span>
+            </Link>
+          </Button>
         </div>
         <div className="flex items-center gap-1">
           <DailyCheckin projectId={projectId} />
