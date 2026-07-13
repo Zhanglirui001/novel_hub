@@ -15,10 +15,10 @@ const colorClasses: Record<string, string> = {
 function NodeHandles() {
   return (
     <>
-      <Handle type="target" position={Position.Left} className="!bg-zinc-600" />
-      <Handle type="source" position={Position.Right} className="!bg-zinc-600" />
-      <Handle type="target" position={Position.Top} className="!bg-zinc-600" />
-      <Handle type="source" position={Position.Bottom} className="!bg-zinc-600" />
+      <Handle id="target-left" type="target" position={Position.Left} className="inspiration-handle inspiration-handle-target" aria-label="从左侧接收关系" />
+      <Handle id="source-right" type="source" position={Position.Right} className="inspiration-handle inspiration-handle-source" aria-label="从右侧发起关系" />
+      <Handle id="target-top" type="target" position={Position.Top} className="inspiration-handle inspiration-handle-target" aria-label="从顶部接收关系" />
+      <Handle id="source-bottom" type="source" position={Position.Bottom} className="inspiration-handle inspiration-handle-source" aria-label="从底部发起关系" />
     </>
   );
 }

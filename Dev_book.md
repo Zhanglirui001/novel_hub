@@ -817,3 +817,88 @@ python -m unittest discover -s tests -p test_inspiration_service.py
 cd web && npm run build
 Next.js build / TypeScript OK
 ```
+
+> 你觉得灵感画板的交互，尤其是连接线的拖拽还有没有可优化的点？比如我节点连接线指向目标时的视觉效果可以更丝滑一些
+
+而且当前实现的连接交互还比较接近 React Flow 默认状态。最影响“丝滑感”的点不是曲线类型本身，而是拖拽过程缺少连续、明确的反馈。
+
+**当前状态**
+
+- 拖拽预览线已经是 `SmoothStep`，但没有单独的拖拽样式，所以颜色、粗细和状态反馈基本走库默认值。
+- 节点四个 Handle 都是同一种灰色小点，拖拽时用户不容易立刻识别“可连”“正在命中”“无效”。
+- `ConnectionMode.Loose` 允许 source 连 source；但画面上的左右/上下 Handle 又在暗示方向性，这会让规则和视觉表达不一致。
+- 边目前统一为固定青绿色、1.5px，且不带箭头、选中态、标签或可编辑关系类型。
+- 前端保存图时会把后端已有的 `edge_type` 与 `style` 丢掉；这不只是体验问题，也会限制后续做“人物关系 / 因果 / 时间线”等不同连接表达。
+
+**我建议优先做这四项**
+
+1. **连接拖拽状态做成渐进反馈**
+
+   - 起拖后，源 Handle 放大并显示主题色。
+   - 靠近可连接节点时，目标节点描边淡入，目标 Handle 扩大并变为高亮色。
+   - 命中有效 Handle 时，预览线加粗、颜色转为主题青绿；无效时转为低饱和红色或灰红色。
+   - 鼠标离开目标后平滑恢复，不应突然跳变。
+
+   这能直接解决“线指向目标时不够丝滑”的主观感受。实现上可用 `connectionLineStyle`、`onConnectStart/onConnectEnd` 加状态，以及 `.react-flow__handle.connecting/.valid/.invalid` 的 CSS 过渡。
+
+2. **明确连接方向和视觉语言**
+
+   - 若关系是有方向的，改为 `ConnectionMode.Strict`，只允许 source -> target。
+   - 在已建立的线终点加小而克制的箭头；拖拽预览线也带箭头或末端发光点。
+   - Source Handle 采用主题色描边，Target Handle 用中性底色，在悬停时才明显显示。
+
+   对灵感画板而言，方向即使语义比较弱，也能让用户理解“我正从这个想法延展到另一个想法”。
+
+3. **降低连接 Handle 的操作摩擦**
+
+   - 视觉圆点保持克制，但把实际命中区域放大到约 `14-18px`，避免用户必须精确点中 6px 默认点。
+   - 节点非悬停时弱化 Handle；节点悬停、选中或正处于连线模式时显现。
+   - 靠近节点边缘时，可让对应的 Handle 先出现，让用户知道连接落点。
+
+4. **让已建立连接有可读性**
+
+   - 选中边时加粗并提高颜色对比度。
+   - 支持双击边编辑关系标签，例如“导致”“冲突”“伏笔”“关联”。
+   - 关系类型可映射为少量稳定视觉：因果用实线箭头、关联用细线、冲突用虚线。不要一开始做太多类型。
+   - 支持拖动边的端点重新连接，减少“删线再重连”的成本。
+
+我会先处理一个基础问题：在 [board-canvas.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/inspiration/board-canvas.tsx) 保存图数据时保留 `edge_type`、`label` 和 `style`。否则之后做出的边标签或颜色样式会在下次自动保存时被覆盖。
+
+一个合适的最小迭代可以是：
+
+1. 增加连接中的 Handle、节点、预览线状态和 CSS transition。
+2. 将模式改为严格方向连接，并给连接增加轻量箭头与选中态。
+3. 保留边的元数据，为下一步关系标签和样式扩展留出正确的数据通路。
+4. 对重复连接做校验，防止出现多条无法区分的相同关系。
+
+其中第 1、2 项会最直观地提升“指向目标时更丝滑”的感受；第 3 项是避免后续功能返工的必要修正。
+
+> 不需要涉及数据库层面的任何调整吧，如果不需要那就那招你的方案尝试落地执行。
+
+已完成，未涉及数据库、后端接口或共享类型调整。
+
+画板连线现在具备：
+
+- 严格的 `source -> target` 连接方向，禁止 source-to-source、target-to-target、自连接。
+- 重复连接拦截，按节点和 Handle 组合判断。
+- 更明显的拖拽反馈：起点与有效目标点放大、高亮，预览线加粗且圆角。
+- 已创建边增加方向箭头；选中或键盘聚焦时线条加粗。
+- 左/上为目标 Handle，右/下为源 Handle，并加上稳定 ID 与无障碍标签。
+- 前端保存时保留已有 `edge_type`、`label`、`style`，并在 `style.flow` 保存连线 Handle，刷新后保持走线端点一致。
+
+修改文件：
+
+- [board-canvas.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/inspiration/board-canvas.tsx)
+- [inspiration-card-node.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/inspiration/inspiration-card-node.tsx)
+- [globals.css](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/app/globals.css)
+
+验证：
+
+- `npm run build` 通过，包含 Next 编译与 TypeScript 检查。
+- `git diff --check` 通过。
+- 已存在的开发服务响应正常：`http://localhost:3000`。
+- `npm run lint` 未能运行，因为项目的 `next lint` 脚本与当前 Next.js 16 不兼容，它将 `lint` 解析成了目录参数；这与本次改动无关。
+
+可在已有项目的灵感画板页面中，从节点右侧/下侧 Handle 拖到另一个节点左侧/上侧 Handle，观察目标高亮、平滑预览线和箭头边。
+
+> 连接线不能删除和取消，也没办法修改连接的节点。

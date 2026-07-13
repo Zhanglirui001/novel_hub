@@ -5,12 +5,15 @@ import {
   ConnectionLineType,
   ConnectionMode,
   Controls,
+  MarkerType,
   MiniMap,
   ReactFlow,
   applyEdgeChanges,
   applyNodeChanges,
   type Connection,
   type Edge,
+  type EdgeMarker,
+  type IsValidConnection,
   type Node,
   type OnConnect,
   type OnEdgesChange,
@@ -23,6 +26,32 @@ import { InspirationCardNode, QuickNode } from "./inspiration-card-node";
 import type { InspirationBoardEdge, InspirationBoardGraph, InspirationBoardNode, InspirationCard, InspirationViewport } from "@/lib/types";
 
 type CanvasNodeData = { card?: InspirationCard; annotation?: string; title?: string; content?: string; nodeType?: "annotation" | "event" | "character" };
+type CanvasEdgeData = {
+  edgeType: string;
+  style: Record<string, unknown>;
+};
+
+const edgeStyle = { stroke: "#0f766e", strokeWidth: 1.5 };
+const edgeMarker: EdgeMarker = { type: MarkerType.ArrowClosed, color: "#0f766e", width: 14, height: 14 };
+
+function getHandleIds(style: Record<string, unknown>) {
+  const flow = style.flow;
+  if (!flow || typeof flow !== "object" || Array.isArray(flow)) return {};
+
+  const { sourceHandle, targetHandle } = flow as Record<string, unknown>;
+  return {
+    sourceHandle: typeof sourceHandle === "string" ? sourceHandle : undefined,
+    targetHandle: typeof targetHandle === "string" ? targetHandle : undefined,
+  };
+}
+
+function withHandleIds(style: Record<string, unknown>, sourceHandle: string | null, targetHandle: string | null) {
+  const flow = style.flow && typeof style.flow === "object" && !Array.isArray(style.flow) ? style.flow : {};
+  return {
+    ...style,
+    flow: { ...flow, sourceHandle, targetHandle },
+  };
+}
 
 const nodeTypes = { inspirationCard: InspirationCardNode, quickNode: QuickNode };
 
@@ -41,14 +70,18 @@ function toFlowNodes(graphNodes: InspirationBoardNode[], cards: InspirationCard[
   }));
 }
 
-function toFlowEdges(edges: InspirationBoardEdge[]): Edge[] {
+function toFlowEdges(edges: InspirationBoardEdge[]): Edge<CanvasEdgeData>[] {
   return edges.map((edge) => ({
     id: edge.id,
     source: edge.source_node_id,
     target: edge.target_node_id,
+    ...getHandleIds(edge.style),
     label: edge.label,
     type: "smoothstep",
-    style: { stroke: "#0f766e", strokeWidth: 1.5 },
+    className: "inspiration-board-edge",
+    style: edgeStyle,
+    markerEnd: edgeMarker,
+    data: { edgeType: edge.edge_type, style: edge.style },
   }));
 }
 
@@ -62,8 +95,8 @@ interface BoardCanvasProps {
 
 export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsChange, onGraphChange }: BoardCanvasProps) {
   const [nodes, setNodes] = useState<Node<CanvasNodeData>[]>([]);
-  const [edges, setEdges] = useState<Edge[]>([]);
-  const flowRef = useRef<ReactFlowInstance<Node<CanvasNodeData>, Edge> | null>(null);
+  const [edges, setEdges] = useState<Edge<CanvasEdgeData>[]>([]);
+  const flowRef = useRef<ReactFlowInstance<Node<CanvasNodeData>, Edge<CanvasEdgeData>> | null>(null);
   const cardsById = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
 
   useEffect(() => {
@@ -71,7 +104,7 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
     setEdges(toFlowEdges(graph.edges));
   }, [graph, cards]);
 
-  const emit = useCallback((nextNodes: Node<CanvasNodeData>[], nextEdges: Edge[]) => {
+  const emit = useCallback((nextNodes: Node<CanvasNodeData>[], nextEdges: Edge<CanvasEdgeData>[]) => {
     const viewport = flowRef.current?.getViewport() || graph.viewport;
     const savedNodes: InspirationBoardNode[] = nextNodes.map((node) => ({
       id: node.id,
@@ -92,9 +125,9 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
       board_id: graph.id,
       source_node_id: edge.source,
       target_node_id: edge.target,
-      edge_type: "relation",
+      edge_type: edge.data?.edgeType || "relation",
       label: typeof edge.label === "string" ? edge.label : "",
-      style: {},
+      style: withHandleIds(edge.data?.style || {}, edge.sourceHandle ?? null, edge.targetHandle ?? null),
       created_at: "",
       updated_at: "",
     }));
@@ -109,15 +142,34 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
     if (changes.some((change) => change.type === "position" && !change.dragging) || changes.some((change) => change.type === "remove")) emit(next, edges);
   };
 
-  const onEdgesChange: OnEdgesChange<Edge> = (changes) => {
+  const onEdgesChange: OnEdgesChange<Edge<CanvasEdgeData>> = (changes) => {
     const next = applyEdgeChanges(changes, edges);
     setEdges(next);
     if (changes.some((change) => change.type === "remove")) emit(nodes, next);
   };
 
+  const isValidConnection: IsValidConnection<Edge<CanvasEdgeData>> = useCallback((connection) => {
+    if (!connection.source || !connection.target || connection.source === connection.target) return false;
+
+    return !edges.some((edge) => (
+      edge.source === connection.source
+      && edge.target === connection.target
+      && edge.sourceHandle === connection.sourceHandle
+      && edge.targetHandle === connection.targetHandle
+    ));
+  }, [edges]);
+
   const onConnect: OnConnect = (connection: Connection) => {
-    if (!connection.source || !connection.target || connection.source === connection.target) return;
-    const next = addEdge({ ...connection, id: `edge-${crypto.randomUUID()}`, type: "smoothstep", style: { stroke: "#0f766e", strokeWidth: 1.5 } }, edges);
+    if (!isValidConnection(connection)) return;
+    const next = addEdge({
+      ...connection,
+      id: `edge-${crypto.randomUUID()}`,
+      type: "smoothstep",
+      className: "inspiration-board-edge",
+      style: edgeStyle,
+      markerEnd: edgeMarker,
+      data: { edgeType: "relation", style: withHandleIds({}, connection.sourceHandle, connection.targetHandle) },
+    }, edges);
     setEdges(next);
     emit(nodes, next);
   };
@@ -148,7 +200,7 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
 
   return (
     <div
-      className="relative h-full min-h-[520px] border border-zinc-200 bg-zinc-50"
+      className="inspiration-board relative h-full min-h-[520px] border border-zinc-200 bg-zinc-50"
       onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
       onDrop={(event) => {
         event.preventDefault();
@@ -182,9 +234,10 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        isValidConnection={(connection) => connection.source !== connection.target}
-        connectionMode={ConnectionMode.Loose}
+        isValidConnection={isValidConnection}
+        connectionMode={ConnectionMode.Strict}
         connectionLineType={ConnectionLineType.SmoothStep}
+        connectionLineStyle={{ stroke: "#0f766e", strokeWidth: 2.25, strokeLinecap: "round" }}
         onInit={(instance) => {
           flowRef.current = instance;
           instance.setViewport(graph.viewport);
