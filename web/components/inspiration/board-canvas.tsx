@@ -191,7 +191,16 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
 
   const onReconnect: OnReconnect<Edge<CanvasEdgeData>> = (oldEdge, connection) => {
     if (!canReconnect(oldEdge, connection)) return;
-    const next = reconnectEdge(oldEdge, connection, edges, { shouldReplaceId: false });
+    const reconnectedEdge = reconnectEdge(oldEdge, connection, edges, { shouldReplaceId: false });
+    const next = reconnectedEdge.map((edge) => edge.id === oldEdge.id ? {
+      ...edge,
+      style: edgeStyle,
+      markerEnd: edgeMarker,
+      data: {
+        edgeType: oldEdge.data?.edgeType || "relation",
+        style: withHandleIds(oldEdge.data?.style || {}, edge.sourceHandle ?? null, edge.targetHandle ?? null),
+      },
+    } : edge);
     setEdges(next);
     emit(nodes, next);
   };

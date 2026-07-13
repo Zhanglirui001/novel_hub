@@ -13,12 +13,21 @@ const colorClasses: Record<string, string> = {
 };
 
 function NodeHandles() {
+  const handles = [
+    { side: "left", position: Position.Left },
+    { side: "right", position: Position.Right },
+    { side: "top", position: Position.Top },
+    { side: "bottom", position: Position.Bottom },
+  ];
+
   return (
     <>
-      <Handle id="target-left" type="target" position={Position.Left} className="inspiration-handle inspiration-handle-target" aria-label="从左侧接收关系" />
-      <Handle id="source-right" type="source" position={Position.Right} className="inspiration-handle inspiration-handle-source" aria-label="从右侧发起关系" />
-      <Handle id="target-top" type="target" position={Position.Top} className="inspiration-handle inspiration-handle-target" aria-label="从顶部接收关系" />
-      <Handle id="source-bottom" type="source" position={Position.Bottom} className="inspiration-handle inspiration-handle-source" aria-label="从底部发起关系" />
+      {handles.map(({ side, position }) => (
+        <Handle key={`target-${side}`} id={`target-${side}`} type="target" position={position} className="inspiration-handle inspiration-handle-target" aria-label={`从${side === "left" ? "左" : side === "right" ? "右" : side === "top" ? "上" : "下"}侧接收关系`} />
+      ))}
+      {handles.map(({ side, position }) => (
+        <Handle key={`source-${side}`} id={`source-${side}`} type="source" position={position} className="inspiration-handle inspiration-handle-source" aria-label={`从${side === "left" ? "左" : side === "right" ? "右" : side === "top" ? "上" : "下"}侧发起关系`} />
+      ))}
     </>
   );
 }

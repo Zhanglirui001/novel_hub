@@ -943,3 +943,14 @@ I hit an internal interruption while applying the planned lifecycle changes, so 
 `npm --prefix web run build` 已完整通过。
 
 > 现在有一个问题，关于连接线的箭头方向不应该从开始拖拽的节点指向拖拽的终点节点吗？
+
+已修复方向交互。
+
+此前节点只有右/下能作为连线起点，左/上只能作为终点，因此用户会感觉方向不完全由拖拽决定。现在 [inspiration-card-node.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/inspiration/inspiration-card-node.tsx) 的四个边都支持发起和接收关系：
+
+- 从任何一侧开始拖拽，该节点即为 `source`。
+- 松开到的节点为 `target`。
+- 箭头始终通过 `markerEnd` 显示在拖拽终点一侧。
+- 重连时也会重新保留箭头、样式及当前的起终点手柄信息，见 [board-canvas.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/inspiration/board-canvas.tsx)。
+
+`npm --prefix web run build` 已通过。
