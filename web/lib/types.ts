@@ -386,11 +386,13 @@ export interface InspirationViewport {
   zoom: number;
 }
 
+export type InspirationBoardNodeType = "card" | "annotation" | "event" | "character";
+
 export interface InspirationBoardNode {
   id: string;
   board_id: number;
   card_id: number | null;
-  node_type: "card" | "annotation";
+  node_type: InspirationBoardNodeType;
   position_x: number;
   position_y: number;
   width: number | null;

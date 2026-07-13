@@ -476,7 +476,7 @@ class InspirationService:
                 raise ValueError("卡片节点必须关联 card_id")
             self._ensure_card(c, project_id, node["card_id"])
         elif node.get("card_id"):
-            raise ValueError("注释节点不能关联 card_id")
+            raise ValueError("轻量节点不能关联 card_id")
         c.execute("SELECT board_id FROM inspiration_board_nodes WHERE id = %s", (node["id"],))
         existing = c.fetchone()
         if existing and existing["board_id"] != board_id:

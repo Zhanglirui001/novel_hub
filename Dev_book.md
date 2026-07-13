@@ -799,3 +799,21 @@ One note on security: the streaming endpoint is unauthenticated, same as every o
 - API 的 OpenAPI 服务在 `http://127.0.0.1:8000/openapi.json` 返回 `200`。
 
 > 是否能支持从左侧拖拽卡片到画板当中，同时支持更灵活的、更易触发的卡片之间的链接操作，优化一下交互，以及支持更方便直接的方式创建一个小的节点（比如只是某个事件或者某个角色名字的节点）
+
+已落地。
+
+- 左侧灵感卡片现在可直接拖到画板任意位置创建节点，原来的点击编辑仍保留。
+- 节点连接改为四方向把手，并启用宽松连接模式，拖线更容易；前端和后端都会拒绝自连接。
+- 画板工具栏新增“事件”“角色”“注释”快速节点。事件和角色是独立轻量节点，只保存名称和可选内容，不会创建完整灵感卡片。
+- 扩展了图谱节点类型与服务端校验，数据库和现有图谱 PATCH 接口无需调整。
+- 增加了轻量节点服务端校验测试。
+
+验证通过：
+
+```text
+python -m unittest discover -s tests -p test_inspiration_service.py
+6 tests OK
+
+cd web && npm run build
+Next.js build / TypeScript OK
+```

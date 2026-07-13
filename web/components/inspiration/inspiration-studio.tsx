@@ -208,7 +208,17 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
             <div className="space-y-2 p-3">
               {cardsQuery.isLoading ? <p className="text-xs text-zinc-500">加载中...</p> : null}
               {cards.map((card) => (
-                <button key={card.id} type="button" className="w-full border border-zinc-200 p-3 text-left hover:border-teal-500 hover:bg-teal-50" onClick={() => openEditCard(card)}>
+                <button
+                  key={card.id}
+                  type="button"
+                  draggable
+                  className="w-full cursor-grab border border-zinc-200 p-3 text-left active:cursor-grabbing hover:border-teal-500 hover:bg-teal-50"
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "copy";
+                    event.dataTransfer.setData("application/x-inspiration-card", String(card.id));
+                  }}
+                  onClick={() => openEditCard(card)}
+                >
                   <div className="mb-1 flex justify-between gap-2"><span className="text-[11px] uppercase text-teal-700">{card.card_type}</span><span className="text-[11px] text-zinc-400">{card.origin === "ai" ? "AI" : ""}</span></div>
                   <p className="line-clamp-1 text-sm font-medium">{card.title}</p>
                   <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500">{card.content || "暂无正文"}</p>

@@ -166,7 +166,7 @@ class InspirationBoardUpdatePayload(BaseModel):
 class InspirationNodePayload(BaseModel):
     id: str = Field(min_length=1, max_length=64)
     card_id: int | None = None
-    node_type: Literal["card", "annotation"]
+    node_type: Literal["card", "annotation", "event", "character"]
     position_x: float = 0
     position_y: float = 0
     width: float | None = None

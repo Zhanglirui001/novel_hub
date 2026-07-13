@@ -57,6 +57,42 @@ class InspirationServiceTests(unittest.TestCase):
                     "deleted_node_ids": [],
                     "deleted_edge_ids": [],
                 })
+    def test_validate_node_accepts_lightweight_nodes_without_card(self):
+        class Cursor:
+            def execute(self, _sql, _params=None):
+                return None
+
+            def fetchone(self):
+                return None
+
+        for node_type in ("annotation", "event", "character"):
+            self.service._validate_node(Cursor(), 1, 1, {"id": f"{node_type}-1", "node_type": node_type, "card_id": None})
+
+    def test_validate_node_rejects_card_id_for_lightweight_node(self):
+        class Cursor:
+            def execute(self, _sql, _params=None):
+                return None
+
+        with self.assertRaises(ValueError):
+            self.service._validate_node(Cursor(), 1, 1, {"id": "event-1", "node_type": "event", "card_id": 1})
+    def test_validate_node_accepts_lightweight_nodes_without_card(self):
+        class Cursor:
+            def execute(self, _sql, _params=None):
+                return None
+
+            def fetchone(self):
+                return None
+
+        for node_type in ("annotation", "event", "character"):
+            self.service._validate_node(Cursor(), 1, 1, {"id": f"{node_type}-1", "node_type": node_type, "card_id": None})
+
+    def test_validate_node_rejects_card_id_for_lightweight_node(self):
+        class Cursor:
+            def execute(self, _sql, _params=None):
+                return None
+
+        with self.assertRaises(ValueError):
+            self.service._validate_node(Cursor(), 1, 1, {"id": "event-1", "node_type": "event", "card_id": 1})
 
 
 if __name__ == "__main__":
