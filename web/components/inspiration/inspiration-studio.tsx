@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrainCircuit, FilePlus2, Loader2, MessageSquareText, Network, Plus, Send, Sparkles, Trash2 } from "lucide-react";
 
 import { BoardCanvas } from "./board-canvas";
@@ -20,7 +20,7 @@ import {
   usePatchInspirationGraph,
   useUpdateInspirationCard,
 } from "@/lib/queries";
-import type { InspirationBoardEdge, InspirationBoardNode, InspirationCard, InspirationCardPayload, InspirationProposal } from "@/lib/types";
+import type { InspirationBoardEdge, InspirationBoardGraph, InspirationBoardNode, InspirationCard, InspirationCardPayload, InspirationProposal, InspirationViewport } from "@/lib/types";
 
 const defaultCard: InspirationCardPayload = { card_type: "idea", title: "", content: "", tags: [], color: "amber" };
 const cardTypes = ["idea", "character", "scene", "conflict", "question", "research", "note"];
@@ -35,6 +35,12 @@ interface InspirationStudioProps {
   projectTitle: string;
 }
 
+type GraphSnapshot = {
+  nodes: InspirationBoardNode[];
+  edges: InspirationBoardEdge[];
+  viewport: InspirationViewport;
+};
+
 export function InspirationStudio({ projectId, projectTitle }: InspirationStudioProps) {
   const [search, setSearch] = useState("");
   const [boardId, setBoardId] = useState<number | null>(null);
@@ -47,6 +53,10 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
   const [discussing, setDiscussing] = useState(false);
   const [proposal, setProposal] = useState<InspirationProposal | null>(null);
   const [notice, setNotice] = useState("");
+  const pendingGraphRef = useRef<GraphSnapshot | null>(null);
+  const persistedGraphRef = useRef<InspirationBoardGraph | null>(null);
+  const savingGraphRef = useRef(false);
+  const boardKeyRef = useRef<string | null>(null);
 
   const cardsQuery = useInspirationCards(projectId, { search });
   const boardsQuery = useInspirationBoards(projectId);
@@ -75,6 +85,54 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
     if (card) setSelectedCard(card);
   }, [cards, selectedCardIds]);
 
+  useEffect(() => {
+    if (!graph) return;
+    const boardKey = `${projectId}:${graph.id}`;
+    if (boardKeyRef.current === boardKey) return;
+
+    boardKeyRef.current = boardKey;
+    pendingGraphRef.current = null;
+    persistedGraphRef.current = graph;
+    savingGraphRef.current = false;
+  }, [graph, projectId]);
+
+  useEffect(() => () => {
+    pendingGraphRef.current = null;
+  }, []);
+
+  const flushGraphSave = useCallback(async () => {
+    if (savingGraphRef.current || !pendingGraphRef.current || !persistedGraphRef.current) return;
+
+    const snapshot = pendingGraphRef.current;
+    const persistedGraph = persistedGraphRef.current;
+    pendingGraphRef.current = null;
+    savingGraphRef.current = true;
+
+    try {
+      const savedGraph = await patchGraph.mutateAsync({
+        expected_graph_version: persistedGraph.graph_version,
+        viewport: snapshot.viewport,
+        nodes: snapshot.nodes,
+        deleted_node_ids: persistedGraph.nodes.filter((node) => !snapshot.nodes.some((next) => next.id === node.id)).map((node) => node.id),
+        edges: snapshot.edges,
+        deleted_edge_ids: persistedGraph.edges.filter((edge) => !snapshot.edges.some((next) => next.id === edge.id)).map((edge) => edge.id),
+      });
+      persistedGraphRef.current = savedGraph;
+    } catch (error) {
+      pendingGraphRef.current = null;
+      setNotice(error instanceof Error ? "画板已有更新，已保留服务端版本" : "画板保存失败");
+      await boardQuery.refetch();
+    } finally {
+      savingGraphRef.current = false;
+      if (pendingGraphRef.current) void flushGraphSave();
+    }
+  }, [boardQuery, patchGraph]);
+
+  const saveGraph = useCallback((nodes: InspirationBoardNode[], edges: InspirationBoardEdge[], viewport: InspirationViewport) => {
+    pendingGraphRef.current = { nodes, edges, viewport };
+    void flushGraphSave();
+  }, [flushGraphSave]);
+
   const openCreateCard = () => {
     setSelectedCard(null);
     setDraft(defaultCard);
@@ -97,23 +155,6 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "保存卡片失败");
     }
-  };
-
-  const saveGraph = (nodes: InspirationBoardNode[], edges: InspirationBoardEdge[], viewport: { x: number; y: number; zoom: number }) => {
-    if (!graph || patchGraph.isPending) return;
-    patchGraph.mutate({
-      expected_graph_version: graph.graph_version,
-      viewport,
-      nodes,
-      deleted_node_ids: graph.nodes.filter((node) => !nodes.some((next) => next.id === node.id)).map((node) => node.id),
-      edges,
-      deleted_edge_ids: graph.edges.filter((edge) => !edges.some((next) => next.id === edge.id)).map((edge) => edge.id),
-    }, {
-      onError: (error) => {
-        setNotice(error instanceof Error ? "画板已有更新，已保留服务端版本" : "画板保存失败");
-        boardQuery.refetch();
-      },
-    });
   };
 
   const createNewBoard = async () => {

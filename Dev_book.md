@@ -902,3 +902,44 @@ Next.js build / TypeScript OK
 可在已有项目的灵感画板页面中，从节点右侧/下侧 Handle 拖到另一个节点左侧/上侧 Handle，观察目标高亮、平滑预览线和箭头边。
 
 > 连接线不能删除和取消，也没办法修改连接的节点。
+
+目前确认根因不在数据库层：
+
+- 删除边的本地状态会更新，但当上一笔图保存请求仍在进行时，`InspirationStudio` 会直接丢弃新的完整画板快照；旧请求成功后又将旧图数据回灌，表现为边“无法删除”或重新出现。
+- 端点拖动重连尚未接入 React Flow 的 `onReconnect`，所以当前没有修改连接节点的入口。
+- 取消操作应保持无副作用：拖拽到空白处、无效 Handle、自连接或重复连接时，既不创建新边，也不改原边、更不会触发保存。
+
+计划的实现保持前端范围：
+
+1. 接入 `onReconnect`、`reconnectEdge`、`edgesReconnectable`，拖动边端点修改既有边而不更换 ID。
+2. 将图保存改为“单请求串行 + 最新快照合并队列”，确保删除、重连、移动和视口变化不会在请求进行中被丢掉。
+3. 保存失败或版本冲突时，放弃未确认本地快照并重新拉取服务端状态，避免错误合并。
+
+不需要改 API、数据库、后端 schema 或边数据结构。
+
+I hit an internal interruption while applying the planned lifecycle changes, so I have not made further source edits in this step beyond the prior connection-feedback work. The intended fix is clear: add React Flow endpoint reconnection and replace the parent’s dropped-save guard with an ordered snapshot queue; the current issue is not a database limitation.目前确认根因不在数据库层：
+
+- 删除边的本地状态会更新，但当上一笔图保存请求仍在进行时，`InspirationStudio` 会直接丢弃新的完整画板快照；旧请求成功后又将旧图数据回灌，表现为边“无法删除”或重新出现。
+- 端点拖动重连尚未接入 React Flow 的 `onReconnect`，所以当前没有修改连接节点的入口。
+- 取消操作应保持无副作用：拖拽到空白处、无效 Handle、自连接或重复连接时，既不创建新边，也不改原边、更不会触发保存。
+
+计划的实现保持前端范围：
+
+1. 接入 `onReconnect`、`reconnectEdge`、`edgesReconnectable`，拖动边端点修改既有边而不更换 ID。
+2. 将图保存改为“单请求串行 + 最新快照合并队列”，确保删除、重连、移动和视口变化不会在请求进行中被丢掉。
+3. 保存失败或版本冲突时，放弃未确认本地快照并重新拉取服务端状态，避免错误合并。
+
+不需要改 API、数据库、后端 schema 或边数据结构。
+
+> 进行修改优化和落地
+
+已修复 [board-canvas.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/inspiration/board-canvas.tsx)。
+
+- 删除了重复渲染的两份 `EdgeToolbar`。
+- 为 `EdgeToolbar` 提供了必需的 `x`、`y` 坐标，消除了 TypeScript 错误。
+- 删除按钮现在只在选中连线时出现，并定位在该连线两端节点中心的中点，拖动节点后会跟随更新。
+- 将按钮从 28px 提升到 36px，改为高对比度圆形按钮，加入 hover、focus、active 反馈，点击更容易。
+
+`npm --prefix web run build` 已完整通过。
+
+> 现在有一个问题，关于连接线的箭头方向不应该从开始拖拽的节点指向拖拽的终点节点吗？

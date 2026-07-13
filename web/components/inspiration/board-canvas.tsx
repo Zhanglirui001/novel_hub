@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
 import {
   addEdge,
   Background,
   ConnectionLineType,
   ConnectionMode,
   Controls,
+  EdgeToolbar,
   MarkerType,
   MiniMap,
   ReactFlow,
   applyEdgeChanges,
   applyNodeChanges,
+  reconnectEdge,
   type Connection,
   type Edge,
   type EdgeMarker,
@@ -18,6 +21,7 @@ import {
   type OnConnect,
   type OnEdgesChange,
   type OnNodesChange,
+  type OnReconnect,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -159,6 +163,17 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
     ));
   }, [edges]);
 
+  const canReconnect = useCallback((oldEdge: Edge<CanvasEdgeData>, connection: Connection) => {
+    if (!connection.source || !connection.target || connection.source === connection.target) return false;
+
+    return !edges.some((edge) => edge.id !== oldEdge.id && (
+      edge.source === connection.source
+      && edge.target === connection.target
+      && edge.sourceHandle === connection.sourceHandle
+      && edge.targetHandle === connection.targetHandle
+    ));
+  }, [edges]);
+
   const onConnect: OnConnect = (connection: Connection) => {
     if (!isValidConnection(connection)) return;
     const next = addEdge({
@@ -173,6 +188,38 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
     setEdges(next);
     emit(nodes, next);
   };
+
+  const onReconnect: OnReconnect<Edge<CanvasEdgeData>> = (oldEdge, connection) => {
+    if (!canReconnect(oldEdge, connection)) return;
+    const next = reconnectEdge(oldEdge, connection, edges, { shouldReplaceId: false });
+    setEdges(next);
+    emit(nodes, next);
+  };
+
+  const deleteEdge = (edgeId: string) => {
+    const next = edges.filter((edge) => edge.id !== edgeId);
+    setEdges(next);
+    emit(nodes, next);
+  };
+
+  const selectedEdgeToolbars = useMemo(() => edges.flatMap((edge) => {
+    if (!edge.selected) return [];
+
+    const source = nodes.find((node) => node.id === edge.source);
+    const target = nodes.find((node) => node.id === edge.target);
+    if (!source || !target) return [];
+
+    const sourceWidth = source.measured?.width ?? source.width ?? 0;
+    const sourceHeight = source.measured?.height ?? source.height ?? 0;
+    const targetWidth = target.measured?.width ?? target.width ?? 0;
+    const targetHeight = target.measured?.height ?? target.height ?? 0;
+
+    return [{
+      edgeId: edge.id,
+      x: (source.position.x + sourceWidth / 2 + target.position.x + targetWidth / 2) / 2,
+      y: (source.position.y + sourceHeight / 2 + target.position.y + targetHeight / 2) / 2,
+    }];
+  }), [edges, nodes]);
 
   const addCardNode = (card: InspirationCard, position?: { x: number; y: number }) => {
     const next = [...nodes, {
@@ -234,6 +281,9 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onReconnect={onReconnect}
+        edgesReconnectable
+        reconnectRadius={16}
         isValidConnection={isValidConnection}
         connectionMode={ConnectionMode.Strict}
         connectionLineType={ConnectionLineType.SmoothStep}
@@ -249,6 +299,19 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
         <Background gap={18} size={1} color="#d4d4d8" />
         <Controls showInteractive={false} />
         <MiniMap pannable zoomable nodeColor="#0f766e" />
+        {selectedEdgeToolbars.map(({ edgeId, x, y }) => (
+          <EdgeToolbar key={edgeId} edgeId={edgeId} x={x} y={y} isVisible>
+            <button
+              type="button"
+              className="flex size-9 items-center justify-center rounded-full border-2 border-rose-500 bg-white text-rose-700 shadow-md transition-colors hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 active:bg-rose-100"
+              aria-label="删除关系"
+              title="删除关系"
+              onClick={() => deleteEdge(edgeId)}
+            >
+              <Trash2 className="size-4" strokeWidth={2.5} />
+            </button>
+          </EdgeToolbar>
+        ))}
       </ReactFlow>
     </div>
   );
