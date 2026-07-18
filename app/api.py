@@ -44,7 +44,7 @@ init_db()
 app = FastAPI(title="Novel Hub API", version="0.1.0")
 
 # 允许本地 Next.js 前端跨域访问。可通过 CORS_ORIGINS 环境变量覆盖（逗号分隔）。
-_default_origins = "http://localhost:3000,http://127.0.0.1:3000"
+_default_origins = "http://localhost:3001,http://127.0.0.1:3001"
 allow_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", _default_origins).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
