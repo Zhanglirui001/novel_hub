@@ -24,6 +24,10 @@ class DailyCheckinPayload(BaseModel):
     pass
 
 
+class DailyCheckinMakeupPayload(BaseModel):
+    pass
+
+
 class MonthlyFixedTodoCreatePayload(BaseModel):
     month: str
     content: str = Field(max_length=500)

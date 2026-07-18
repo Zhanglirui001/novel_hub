@@ -315,11 +315,17 @@ def init_db() -> None:
                 project_id INT NOT NULL,
                 checkin_date DATE NOT NULL,
                 completed_at VARCHAR(32) NOT NULL,
+                is_makeup BOOLEAN NOT NULL DEFAULT FALSE,
                 UNIQUE KEY uq_daily_checkins_project_date(project_id, checkin_date),
                 INDEX idx_daily_checkins_project_date(project_id, checkin_date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
+        try:
+            c.execute("ALTER TABLE daily_checkins ADD COLUMN is_makeup BOOLEAN NOT NULL DEFAULT FALSE")
+        except pymysql.err.OperationalError as exc:
+            if exc.args[0] != 1060:
+                raise
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS chat_sessions (

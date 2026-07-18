@@ -14,6 +14,7 @@ from app.schemas import (
     ChatSessionCreatePayload,
     ConsistencyPayload,
     DailyCheckinPayload,
+    DailyCheckinMakeupPayload,
     DailyTodoCreatePayload,
     DailyTodoUpdatePayload,
     MonthlyFixedTodoCreatePayload,
@@ -475,6 +476,14 @@ def delete_monthly_fixed_todo(template_id: int, project_id: int):
 def create_daily_checkin(project_id: int, _payload: DailyCheckinPayload):
     try:
         return checkin_service.check_in(project_id)
+    except ValueError as exc:
+        raise _checkin_error(exc) from exc
+
+
+@app.post("/projects/{project_id}/daily-checkin/{day}/makeup")
+def make_up_daily_checkin(project_id: int, day: str, _payload: DailyCheckinMakeupPayload):
+    try:
+        return checkin_service.make_up(project_id, day)
     except ValueError as exc:
         raise _checkin_error(exc) from exc
 

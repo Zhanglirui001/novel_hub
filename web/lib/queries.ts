@@ -130,6 +130,14 @@ export function useCreateDailyCheckin(projectId: number) {
   });
 }
 
+export function useMakeUpDailyCheckin(projectId: number) {
+  const setSummary = useDailyCheckinCache(projectId);
+  return useMutation({
+    mutationFn: (day: string) => api.makeUpDailyCheckin(projectId, day),
+    onSuccess: setSummary,
+  });
+}
+
 export function useChapters(projectId: number) {
   return useQuery({
     queryKey: ["chapters", projectId],

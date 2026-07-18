@@ -4,6 +4,8 @@ from app.database import get_conn, utc_now, utc_today
 
 
 class CheckinService:
+    MAKEUP_CARDS_PER_MONTH = 8
+
     @staticmethod
     def _parse_day(value: str) -> date:
         try:
@@ -61,6 +63,18 @@ class CheckinService:
         )
         return cursor.fetchone() is not None
 
+    def _makeup_used(self, cursor, project_id: int, month_start: date) -> int:
+        month_end = self._month_end(month_start)
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS used FROM daily_checkins
+            WHERE project_id = %s AND is_makeup = TRUE
+                AND checkin_date >= %s AND checkin_date < %s
+            """,
+            (project_id, month_start.isoformat(), month_end.isoformat()),
+        )
+        return int(cursor.fetchone()["used"])
+
     def _summary(self, cursor, project_id: int, day: str) -> dict:
         selected_day = self._parse_day(day)
         today = self._parse_day(utc_today())
@@ -88,6 +102,10 @@ class CheckinService:
         checkin_dates = [row["checkin_date"] for row in cursor.fetchall()]
         parsed_dates = [value if isinstance(value, date) else date.fromisoformat(str(value)) for value in checkin_dates]
 
+        makeup_used = self._makeup_used(cursor, project_id, selected_day.replace(day=1))
+        makeup_remaining = max(0, self.MAKEUP_CARDS_PER_MONTH - makeup_used)
+        can_make_up = selected_day < today and not checked_in and makeup_remaining > 0
+
         return {
             "project_id": project_id,
             "date": day,
@@ -97,6 +115,10 @@ class CheckinService:
             "checked_in": checked_in,
             "locked": selected_day < today or checked_in,
             "current_streak": self._current_streak(parsed_dates, today),
+            "makeup_total": self.MAKEUP_CARDS_PER_MONTH,
+            "makeup_used": makeup_used,
+            "makeup_remaining": makeup_remaining,
+            "can_make_up": can_make_up,
         }
 
     def get_day(self, project_id: int, day: str) -> dict:
@@ -131,21 +153,24 @@ class CheckinService:
                     "total_count": int(row["total_count"]),
                     "completed_count": int(row["completed_count"]),
                     "checked_in": False,
+                    "is_makeup": False,
                 }
                 for row in cursor.fetchall()
             }
             cursor.execute(
                 """
-                SELECT checkin_date AS date FROM daily_checkins
+                SELECT checkin_date AS date, is_makeup FROM daily_checkins
                 WHERE project_id = %s AND checkin_date >= %s AND checkin_date < %s
                 """,
                 (project_id, month_start.isoformat(), month_end.isoformat()),
             )
             for row in cursor.fetchall():
                 day = str(row["date"])
-                days.setdefault(day, {"date": day, "total_count": 0, "completed_count": 0, "checked_in": False})[
-                    "checked_in"
-                ] = True
+                status = days.setdefault(
+                    day, {"date": day, "total_count": 0, "completed_count": 0, "checked_in": False, "is_makeup": False}
+                )
+                status["checked_in"] = True
+                status["is_makeup"] = bool(row["is_makeup"])
 
         return {
             "project_id": project_id,
@@ -384,3 +409,25 @@ class CheckinService:
                 (project_id, today, now),
             )
             return self._summary(cursor, project_id, today)
+
+    def make_up(self, project_id: int, day: str) -> dict:
+        selected_day = self._parse_day(day)
+        today = self._parse_day(utc_today())
+        now = utc_now()
+        with get_conn() as conn:
+            cursor = conn.cursor()
+            self._ensure_project(cursor, project_id)
+            if selected_day >= today:
+                raise ValueError("补签卡只能用于补签过去的日期")
+            if self._is_checked_in(cursor, project_id, day):
+                raise ValueError("该日期已签到，无需补签")
+            if self._makeup_used(cursor, project_id, selected_day.replace(day=1)) >= self.MAKEUP_CARDS_PER_MONTH:
+                raise ValueError(f"本月补签卡已用完（每月 {self.MAKEUP_CARDS_PER_MONTH} 次）")
+            cursor.execute(
+                """
+                INSERT INTO daily_checkins (project_id, checkin_date, completed_at, is_makeup)
+                VALUES (%s, %s, %s, TRUE)
+                """,
+                (project_id, day, now),
+            )
+            return self._summary(cursor, project_id, day)

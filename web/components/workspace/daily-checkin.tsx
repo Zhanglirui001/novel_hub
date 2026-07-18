@@ -16,6 +16,7 @@ import {
   useDailyCheckinMonth,
   useDeleteDailyTodo,
   useDeleteMonthlyFixedTodo,
+  useMakeUpDailyCheckin,
   useMonthlyFixedTodos,
   useUpdateDailyTodo,
 } from "@/lib/queries";
@@ -124,15 +125,18 @@ export function DailyCheckin({ projectId }: { projectId: number }) {
   const updateTodo = useUpdateDailyTodo(projectId);
   const deleteTodo = useDeleteDailyTodo(projectId);
   const checkin = useCreateDailyCheckin(projectId);
+  const makeUp = useMakeUpDailyCheckin(projectId);
   const createFixed = useCreateMonthlyFixedTodo(projectId);
   const deleteFixed = useDeleteMonthlyFixedTodo(projectId);
-  const pending = createTodo.isPending || updateTodo.isPending || deleteTodo.isPending || checkin.isPending || createFixed.isPending || deleteFixed.isPending;
+  const pending = createTodo.isPending || updateTodo.isPending || deleteTodo.isPending || checkin.isPending || makeUp.isPending || createFixed.isPending || deleteFixed.isPending;
   const isToday = selectedDay === today;
+  const isPast = selectedDay < today;
   const isFuture = selectedDay > today;
   const isEditable = selectedDay >= today && !summary?.locked;
   const completed = summary?.completed_count ?? 0;
   const total = summary?.total_count ?? 0;
   const canCheckIn = isToday && total > 0 && completed === total && !summary?.checked_in;
+  const canMakeUp = isPast && !summary?.checked_in && (summary?.makeup_remaining ?? 0) > 0;
   const statusByDate = React.useMemo(() => new Map(monthSummary?.days.map((status) => [status.date, status])), [monthSummary]);
 
   function fail(error: Error) {
@@ -194,7 +198,7 @@ export function DailyCheckin({ projectId }: { projectId: number }) {
                   <button key={cell.date} type="button" onClick={() => setSelectedDay(cell.date)} className={cn("relative min-h-16 border-b border-r p-1.5 text-left hover:bg-muted/60", selectedDay === cell.date && "bg-muted", today === cell.date && "ring-1 ring-inset ring-primary", status?.checked_in && "bg-primary/10")}>
                     <span className="text-xs font-medium">{cell.label}</span>
                     {progress && <span className="absolute bottom-1 left-1.5 text-[10px] text-muted-foreground">{progress}</span>}
-                    {status?.checked_in && <CheckCircle2 className="absolute bottom-1 right-1 h-3.5 w-3.5 text-primary" />}
+                    {status?.checked_in && <CheckCircle2 className={cn("absolute bottom-1 right-1 h-3.5 w-3.5", status.is_makeup ? "text-amber-500" : "text-primary")} aria-label={status.is_makeup ? "补签" : "已签到"} />}
                   </button>
                 ) : <div key={`blank-${index}`} className="min-h-16 border-b border-r bg-muted/20" />;
               })}
@@ -221,7 +225,14 @@ export function DailyCheckin({ projectId }: { projectId: number }) {
               <p className="text-sm text-muted-foreground">完成 {completed}/{total} 项{summary?.checked_in ? "，已签到" : ""}</p>
               {isEditable && <form className="flex gap-2" onSubmit={addTask}><Input value={taskContent} maxLength={500} placeholder={isFuture ? "规划未来待办" : "添加待办事项"} onChange={(event) => setTaskContent(event.target.value)} /><Button type="submit" size="icon" disabled={pending || !taskContent.trim()} aria-label="添加待办"><Plus className="h-4 w-4" /></Button></form>}
               {summary?.todos.length ? <ul className="max-h-72 overflow-y-auto">{summary.todos.map((todo) => <TodoItem key={todo.id} todo={todo} canEdit={isEditable} canComplete={isToday && isEditable} pending={pending} onUpdate={(payload) => updateTodo.mutate({ todoId: todo.id, day: selectedDay, payload }, { onError: fail })} onDelete={() => deleteTodo.mutate({ todoId: todo.id, day: selectedDay }, { onError: fail })} />)}</ul> : <p className="py-6 text-center text-sm text-muted-foreground">这一天没有待办。</p>}
-              {summary?.checked_in ? <div className="flex items-center gap-2 border-t pt-3 text-sm font-medium text-primary"><CheckCircle2 className="h-4 w-4" />当日已签到</div> : isToday ? <Button className="w-full" disabled={!canCheckIn || pending} onClick={() => checkin.mutate(undefined, { onError: fail })}>{canCheckIn ? "完成今日签到" : total === 0 ? "请先添加待办" : "完成全部待办后签到"}</Button> : null}
+              {summary?.checked_in ? <div className="flex items-center gap-2 border-t pt-3 text-sm font-medium text-primary"><CheckCircle2 className="h-4 w-4" />当日已签到</div> : isToday ? <Button className="w-full" disabled={!canCheckIn || pending} onClick={() => checkin.mutate(undefined, { onError: fail })}>{canCheckIn ? "完成今日签到" : total === 0 ? "请先添加待办" : "完成全部待办后签到"}</Button> : isPast ? (
+                <div className="space-y-2 border-t pt-3">
+                  <Button className="w-full" variant="outline" disabled={!canMakeUp || pending} onClick={() => makeUp.mutate(selectedDay, { onSuccess: () => toast.success("补签成功"), onError: fail })}>
+                    {(summary?.makeup_remaining ?? 0) > 0 ? "使用补签卡补签" : "本月补签卡已用完"}
+                  </Button>
+                  <p className="text-center text-xs text-muted-foreground">本月补签卡剩余 {summary?.makeup_remaining ?? 0} / {summary?.makeup_total ?? 8} 张</p>
+                </div>
+              ) : null}
             </div>}
           </div>
         </DialogContent>

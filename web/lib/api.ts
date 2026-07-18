@@ -134,6 +134,12 @@ export const api = {
       body: JSON.stringify({}),
     });
   },
+  makeUpDailyCheckin(projectId: number, day: string) {
+    return request<DailyCheckinSummary>(`/projects/${projectId}/daily-checkin/${day}/makeup`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
   listChapters(projectId: number) {
     return request<Chapter[]>(`/projects/${projectId}/chapters`);
   },

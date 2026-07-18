@@ -28,6 +28,10 @@ export interface DailyCheckinSummary {
   checked_in: boolean;
   locked: boolean;
   current_streak: number;
+  makeup_total: number;
+  makeup_used: number;
+  makeup_remaining: number;
+  can_make_up: boolean;
 }
 
 export interface DailyCheckinDayStatus {
@@ -35,6 +39,7 @@ export interface DailyCheckinDayStatus {
   total_count: number;
   completed_count: number;
   checked_in: boolean;
+  is_makeup: boolean;
 }
 
 export interface DailyCheckinMonthSummary {
