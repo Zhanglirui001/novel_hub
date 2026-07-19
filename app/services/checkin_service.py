@@ -94,7 +94,13 @@ class CheckinService:
 
         total_count = len(todos)
         completed_count = sum(todo["completed"] for todo in todos)
-        checked_in = self._is_checked_in(cursor, project_id, day)
+        cursor.execute(
+            "SELECT is_makeup FROM daily_checkins WHERE project_id = %s AND checkin_date = %s",
+            (project_id, day),
+        )
+        checkin_row = cursor.fetchone()
+        checked_in = checkin_row is not None
+        is_makeup = bool(checkin_row["is_makeup"]) if checkin_row else False
         cursor.execute(
             "SELECT checkin_date FROM daily_checkins WHERE project_id = %s AND checkin_date <= %s",
             (project_id, today.isoformat()),
@@ -113,8 +119,10 @@ class CheckinService:
             "total_count": total_count,
             "completed_count": completed_count,
             "checked_in": checked_in,
+            "is_makeup": is_makeup,
             "locked": selected_day < today or checked_in,
             "current_streak": self._current_streak(parsed_dates, today),
+            "all_completed": self.can_check_in(total_count, completed_count),
             "makeup_total": self.MAKEUP_CARDS_PER_MONTH,
             "makeup_used": makeup_used,
             "makeup_remaining": makeup_remaining,
@@ -152,6 +160,7 @@ class CheckinService:
                     "date": str(row["date"]),
                     "total_count": int(row["total_count"]),
                     "completed_count": int(row["completed_count"]),
+                    "all_completed": int(row["total_count"]) > 0 and int(row["completed_count"]) == int(row["total_count"]),
                     "checked_in": False,
                     "is_makeup": False,
                 }
@@ -167,7 +176,8 @@ class CheckinService:
             for row in cursor.fetchall():
                 day = str(row["date"])
                 status = days.setdefault(
-                    day, {"date": day, "total_count": 0, "completed_count": 0, "checked_in": False, "is_makeup": False}
+                    day,
+                    {"date": day, "total_count": 0, "completed_count": 0, "all_completed": False, "checked_in": False, "is_makeup": False},
                 )
                 status["checked_in"] = True
                 status["is_makeup"] = bool(row["is_makeup"])
@@ -398,8 +408,8 @@ class CheckinService:
             cursor = conn.cursor()
             self._ensure_project(cursor, project_id)
             summary = self._summary(cursor, project_id, today)
-            if not summary["checked_in"] and not self.can_check_in(summary["total_count"], summary["completed_count"]):
-                raise ValueError("请先完成今日全部待办后再签到")
+            if not summary["checked_in"] and summary["total_count"] == 0:
+                raise ValueError("请先添加今日待办后再签到")
             cursor.execute(
                 """
                 INSERT INTO daily_checkins (project_id, checkin_date, completed_at)

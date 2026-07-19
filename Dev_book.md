@@ -755,7 +755,31 @@ Frontend:
 
 One note on security: the streaming endpoint is unauthenticated, same as every other route in this app — fine for local single-user dev, but you'd want auth before exposing it on a network.
 
+> 签到功能改一下逻辑，已完成的任务可以打钩勾选已完成，未完成的勾选未完成；当全部都是已完成的签到和存在未完成的签到存在样式区别
+>
 
+**改动说明**
+
+**签到门槛放宽**（[checkin_service.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/checkin_service.py) `check_in`）：
+
+- 原来必须「完成今日全部待办」才能签到 → 现在**只要今天有待办（≥1 项）就能签到**，不管完成多少。任务本身的打钩/取消打钩（已完成↔未完成）沿用现有逻辑。
+
+**新增「是否全部完成」标记**：
+
+- `_summary` 返回 `all_completed`（`总数>0 且 已完成==总数`）和该日 `is_makeup`；`get_month` 的每天状态也带上 `all_completed`。类型同步到 [types.ts](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/types.ts)。
+
+**样式区分**（[daily-checkin.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/daily-checkin.tsx)）：
+
+| 状态             | 日历格子                                 | 右侧面板                                                     |
+| ---------------- | ---------------------------------------- | ------------------------------------------------------------ |
+| 全部完成的签到   | 主题色底纹 + **主题色**对勾              | 主题色「当日已签到 · 全部完成」                              |
+| 存在未完成的签到 | 琥珀色底纹 + **琥珀色**对勾              | 琥珀色「当日已签到 · 完成 X/Y 项」                           |
+| 补签             | 右上角「补」小标签（颜色仍按完成度区分） | 「补签完成 · 完成 X/Y 项」                                   |
+| 未签到（今天）   | —                                        | 按钮：全完成→「完成今日签到」；有未完成→「签到（还有 N 项未完成）」 |
+
+顶部日历入口图标也按完成度着色（全完成=主题色，部分完成=琥珀色）。
+
+一点说明：之前补签用的是「琥珀色对勾」来标识，现在琥珀色被用来表示「部分完成」，所以我把补签改成用右上角**「补」字小标签**单独标识，这样「是否补签」和「是否全部完成」两个维度互不干扰。如果你更想要别的配色（比如部分完成用灰色、补签保留琥珀），告诉我即可调整。
 
 
 
