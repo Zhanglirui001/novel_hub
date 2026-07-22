@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  BookMarked,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -14,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useMainline } from "@/lib/queries";
 import { useWorkspace } from "./workspace-context";
 
 // 快捷意图 chip：label 给用户看，value 是喂给意图解析的大白话。
@@ -47,6 +49,8 @@ function scoreTone(score: number): string {
 export function ContinueGhostPanel() {
   const {
     selection,
+    draft,
+    activeChapterId,
     ghostAnchor,
     ghostStreaming,
     ghostStages,
@@ -62,8 +66,14 @@ export function ContinueGhostPanel() {
   const [instruction, setInstruction] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement | null>(null);
 
+  const { data: mainline } = useMainline(activeChapterId);
+  const mainlineText = mainline?.content?.trim() ?? "";
+  const [useMainlineRef, setUseMainlineRef] = React.useState(true);
+  const isOpening = !draft.trim();
+
   const active = ghostAnchor === null ? null : ghostCandidates.find((c) => c.id === activeGhostId) ?? null;
   const hasCandidate = !!active;
+  const mainlineArg = mainlineText && useMainlineRef ? mainlineText : undefined;
 
   // 进入续写时清空上一次的指令并聚焦意图条。
   React.useEffect(() => {
@@ -84,10 +94,10 @@ export function ContinueGhostPanel() {
           size="sm"
           onClick={startGhost}
           className="pointer-events-auto shadow-lg"
-          title="在光标处续写下一段（幽灵预览）"
+          title={isOpening ? "承接上一章结尾，为新章节起笔" : "在光标处续写下一段（幽灵预览）"}
         >
           <Sparkles className="h-4 w-4" />
-          续写下一段
+          {isOpening ? "起笔（承接上章）" : "续写下一段"}
         </Button>
       </div>
     );
@@ -95,25 +105,25 @@ export function ContinueGhostPanel() {
 
   const submitFresh = () => {
     if (ghostStreaming) return;
-    runContinue(instruction, { directive: null });
+    runContinue(instruction, { directive: null, mainline: mainlineArg });
   };
 
   // 微调 / 换一版：复用当前候选的 directive，走廉价增量（意图与取材不重跑）。
   const submitRefine = () => {
     if (ghostStreaming) return;
-    runContinue(instruction, { directive: active?.directive ?? null });
+    runContinue(instruction, { directive: active?.directive ?? null, mainline: mainlineArg });
     setInstruction("");
   };
 
   const regenerate = () => {
     if (ghostStreaming) return;
-    runContinue("", { directive: active?.directive ?? null });
+    runContinue("", { directive: active?.directive ?? null, mainline: mainlineArg });
   };
 
   const onChip = (value: string) => {
     if (ghostStreaming) return;
     setInstruction(value);
-    runContinue(value, { directive: hasCandidate ? active?.directive ?? null : null });
+    runContinue(value, { directive: hasCandidate ? active?.directive ?? null : null, mainline: mainlineArg });
   };
 
   const cycle = (dir: 1 | -1) => {
@@ -175,6 +185,27 @@ export function ContinueGhostPanel() {
             <span className="font-medium text-primary">读者感受：</span>
             {active.readerReaction}
           </div>
+        )}
+
+        {/* 本章主线：按需引用（仅在已确认主线时出现） */}
+        {mainlineText && (
+          <button
+            type="button"
+            onClick={() => setUseMainlineRef((v) => !v)}
+            className={cn(
+              "flex w-full items-start gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors",
+              useMainlineRef
+                ? "border-primary/40 bg-primary/5 text-foreground/80"
+                : "border-dashed text-muted-foreground hover:bg-muted/50",
+            )}
+            title={useMainlineRef ? "生成时会参考本章主线，点击关闭" : "生成时不参考本章主线，点击开启"}
+          >
+            <BookMarked className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", useMainlineRef ? "text-primary" : "")} />
+            <span className="flex-1">
+              <span className="font-medium">{useMainlineRef ? "参考本章主线" : "已忽略本章主线"}</span>
+              <span className="ml-1 line-clamp-1 text-muted-foreground">{mainlineText}</span>
+            </span>
+          </button>
         )}
 
         {/* 意图条：留空=顺着往下写；一句话=对下文的要求 */}

@@ -54,6 +54,8 @@ class WritingState(TypedDict, total=False):
     project_id: int
     tail_text: str
     instruction: str
+    mode: str  # continue（段中续写）| opening（新章起笔）
+    mainline: str  # 本章故事主线，按需引用
     directive: dict
     context: dict
     style: dict
@@ -111,6 +113,8 @@ class WritingAgent:
         directive: Optional[dict] = None,
         budget: str = "medium",
         target_latency_ms: int = 6000,
+        mode: str = "continue",
+        mainline: str = "",
     ) -> Iterator[dict]:
         """驱动图并逐事件产出。事件形态：
 
@@ -132,6 +136,8 @@ class WritingAgent:
             "project_id": project_id,
             "tail_text": tail_text or "",
             "instruction": (instruction or "").strip(),
+            "mode": mode if mode in ("continue", "opening") else "continue",
+            "mainline": (mainline or "").strip(),
             "directive": directive or {},
             "context": context,
             "style": style,
@@ -395,27 +401,49 @@ class WritingAgent:
         taboos = "、".join(t["name"] for t in context.get("taboos", [])[:5] if t.get("name"))
         threads = "、".join(self._open_threads(context)) or "（无）"
         tail = state.get("tail_text", "")[-600:]
+        mainline = state.get("mainline", "")
+        opening = state.get("mode") == "opening"
+        head = (
+            "你是小说责编，请把作者对新章节开篇的要求解析为结构化写作指令，只输出 JSON，不要解释。\n"
+            if opening
+            else "你是小说责编，请把作者对下文的要求解析为结构化写作指令，只输出 JSON，不要解释。\n"
+        )
+        tail_label = "上一章结尾" if opening else "前文结尾"
         return (
-            "你是小说责编，请把作者对下文的要求解析为结构化写作指令，只输出 JSON，不要解释。\n"
-            "字段：intent_type(advance/dialogue/scenery/conflict/slow/payoff/free)、"
+            head
+            + "字段：intent_type(advance/dialogue/scenery/conflict/slow/payoff/free)、"
             "beat(本段要达成的目标，一句话)、emotion(情绪基调)、pov_lock(视角)、"
             "approx_length(建议字数,整数)、must_include(数组)、must_avoid(数组)、open_threads(数组)。\n\n"
-            f"作者要求：{state.get('instruction', '') or '（未指定，顺着往下写）'}\n"
+            f"作者要求：{state.get('instruction', '') or ('（未指定，自然开启新章）' if opening else '（未指定，顺着往下写）')}\n"
+            f"本章主线：{mainline or '（无）'}\n"
             f"术语表：{terms or '（无）'}\n"
             f"禁忌：{taboos or '（无）'}\n"
             f"可回收线索：{threads}\n"
-            f"前文结尾：{tail}"
+            f"{tail_label}：{tail}"
         )
 
     def _compose_write_messages(self, state: WritingState) -> list[dict[str, str]]:
         directive = state.get("directive", {})
         style = state.get("style", {})
         picked = state.get("picked", {})
+        mainline = state.get("mainline", "")
+        opening = state.get("mode") == "opening"
+
+        if opening:
+            lead = (
+                "你是资深网文写手。这是新章节的开篇，请承接上一章结尾自然开启新章，"
+                "避免复述或概括上一章内容，直接以正文起笔。只输出正文本身，"
+                "不要输出解释、标题或引号。严格遵守设定与禁忌，保持作者文风与视角。\n"
+            )
+        else:
+            lead = (
+                "你是资深网文写手。请紧接前文续写下一段正文，只输出正文本身，"
+                "不要输出解释、标题或引号。严格遵守设定与禁忌，保持作者文风与视角。\n"
+            )
 
         system = (
-            "你是资深网文写手。请紧接前文续写下一段正文，只输出正文本身，"
-            "不要输出解释、标题或引号。严格遵守设定与禁忌，保持作者文风与视角。\n"
-            f"写作意图：{_INTENT_LABEL.get(directive.get('intent_type', 'free'), '自由续写')}\n"
+            lead
+            + f"写作意图：{_INTENT_LABEL.get(directive.get('intent_type', 'free'), '自由续写')}\n"
             f"本段目标：{directive.get('beat', '顺承前文推进')}\n"
             f"情绪基调：{directive.get('emotion', '顺承前文')}\n"
             f"视角：{directive.get('pov_lock', style.get('pov', 'third_person'))}；"
@@ -427,7 +455,17 @@ class WritingAgent:
             f"必须避免：{('、'.join(directive.get('must_avoid', [])) or '（无）')}\n"
             f"可回收伏笔：{('、'.join(directive.get('open_threads', [])) or '（无）')}"
         )
-        user = f"前文：\n{state.get('tail_text', '')[-1600:]}\n\n请续写下一段。"
+        if mainline:
+            system += f"\n本章主线（务必据此推进，不要提前透支或偏离）：{mainline}"
+
+        if opening:
+            prev = state.get("tail_text", "")[-1600:]
+            if prev.strip():
+                user = f"上一章结尾：\n{prev}\n\n请为新章节写出开篇。"
+            else:
+                user = "这是全书或本卷的开篇，前面没有正文。请依据以上主线与设定写出开篇。"
+        else:
+            user = f"前文：\n{state.get('tail_text', '')[-1600:]}\n\n请续写下一段。"
         return [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -456,6 +494,17 @@ class WritingAgent:
         hot = "、".join(style.get("top_words", [])[:4])
         must = directive.get("must_include", [])
         label = _INTENT_LABEL.get(directive.get("intent_type", "free"), "自由续写")
+        opening = state.get("mode") == "opening"
+        mainline = state.get("mainline", "").strip()
+
+        if opening:
+            pieces = ["（离线预览·新章起笔）"]
+            if mainline:
+                pieces.append(f"本章将围绕主线推进：{mainline[:60]}。")
+            pieces.append(directive.get("beat", "新的一章自上一章的余波中展开，人物带着未了的心事登场。"))
+            if hot:
+                pieces.append(f"语言贴近作者常用词：{hot}。")
+            return "".join(pieces)
 
         pieces = [f"（离线预览·{label}）", directive.get("beat", "剧情顺着既有冲突继续推进，人物行动与人设保持一致。")]
         if must:

@@ -34,6 +34,8 @@ from app.schemas import (
     InlineRevisePayload,
     LlmSettingsPayload,
     LoreImportPayload,
+    MainlineDiscussionPayload,
+    MainlineSavePayload,
     PatchApplyPayload,
     ProjectCreate,
     StyleProfilePayload,
@@ -42,6 +44,7 @@ from app.services import ChatService, ConsistencyGuard, GenerationService, Inspi
 from app.services.inspiration_service import GraphConflictError
 from app.services.checkin_service import CheckinService
 from app.services.writing_agent import WritingAgent
+from app.services.mainline_service import MainlineService
 from app.services import backup_service, settings_service
 
 init_db()
@@ -66,6 +69,7 @@ chat_service = ChatService()
 inspiration_service = InspirationService()
 checkin_service = CheckinService()
 writing_agent = WritingAgent()
+mainline_service = MainlineService()
 
 
 def _checkin_error(exc: ValueError) -> HTTPException:
@@ -220,6 +224,33 @@ def stream_inspiration_discussion(project_id: int, board_id: int, payload: Inspi
         events = chat_service.stream_inspiration_message(session_id, payload.content, context)
     except ValueError as exc:
         raise HTTPException(status_code=404 if "不属于" in str(exc) else 400, detail=str(exc)) from exc
+
+    def event_stream():
+        for event in events:
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/chapters/{chapter_id}/mainline")
+def get_chapter_mainline(chapter_id: int):
+    row = mainline_service.get_mainline(chapter_id)
+    return row or {}
+
+
+@app.put("/chapters/{chapter_id}/mainline")
+def save_chapter_mainline(chapter_id: int, payload: MainlineSavePayload):
+    return mainline_service.save_mainline(payload.project_id, chapter_id, payload.content)
+
+
+@app.post("/projects/{project_id}/chapters/{chapter_id}/mainline/discussion/stream")
+def stream_mainline_discussion(project_id: int, chapter_id: int, payload: MainlineDiscussionPayload):
+    history = [turn.model_dump() for turn in payload.history]
+    events = mainline_service.stream_discussion(project_id, chapter_id, payload.content, history)
 
     def event_stream():
         for event in events:
@@ -608,6 +639,8 @@ def continue_draft_stream(payload: ContinuePayload):
         directive=payload.directive,
         budget=payload.budget,
         target_latency_ms=payload.target_latency_ms,
+        mode=payload.mode,
+        mainline=payload.mainline,
     )
 
     def event_stream():

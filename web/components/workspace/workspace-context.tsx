@@ -19,6 +19,7 @@ import {
   useSaveChapter,
 } from "@/lib/queries";
 import type {
+  ChapterSummary,
   ChatSessionMessage,
   ChatSessionSummary,
   ContinueStreamEvent,
@@ -111,7 +112,7 @@ interface WorkspaceState {
   activeGhostId: string | null;
   ghostLiveText: string;
   startGhost: () => void;
-  runContinue: (instruction: string, opts?: { directive?: WritingDirective | null }) => void;
+  runContinue: (instruction: string, opts?: { directive?: WritingDirective | null; mainline?: string }) => void;
   setActiveGhost: (id: string) => void;
   acceptGhost: () => void;
   cancelGhost: () => void;
@@ -521,6 +522,7 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
     const caret = el ? el.selectionStart ?? draftRef.current.length : draftRef.current.length;
     ghostAbortRef.current?.abort();
     ghostAbortRef.current = null;
+    ghostAnchorRef.current = caret; // 同步置位，便于同一 tick 内紧接着调用 runContinue（如「据此起笔」）
     setGhostAnchor(caret);
     setGhostStreaming(false);
     setGhostStages({});
@@ -534,15 +536,41 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
   }, []);
 
   const runContinue = React.useCallback(
-    (instruction: string, opts?: { directive?: WritingDirective | null }) => {
+    (instruction: string, opts?: { directive?: WritingDirective | null; mainline?: string }) => {
       const anchor = ghostAnchorRef.current;
       if (anchor == null || ghostStreamingRef.current) return;
 
-      const tail = draftRef.current.slice(0, anchor);
-      if (!tail.trim()) {
-        toast.error("光标前没有正文可续写");
-        return;
-      }
+      const mainline = (opts?.mainline ?? "").trim();
+
+      // 解析续写素材：光标前有正文 → 段中续写；空章节 → 起笔，承接上一章结尾。
+      const resolveSource = async (): Promise<{ tail: string; mode: "continue" | "opening" } | null> => {
+        const tail = draftRef.current.slice(0, anchor);
+        if (tail.trim()) return { tail, mode: "continue" };
+
+        // 空章节：找上一章末尾作为起笔素材。
+        const currentId = chapterIdRef.current;
+        const list = queryClient.getQueryData<ChapterSummary[]>(["chapters", projectId]);
+        if (currentId != null && list && list.length > 0) {
+          const sorted = [...list].sort((a, b) => {
+            if (a.group_title !== b.group_title) return a.group_title < b.group_title ? -1 : 1;
+            if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
+            return a.id - b.id;
+          });
+          const idx = sorted.findIndex((c) => c.id === currentId);
+          if (idx > 0) {
+            try {
+              const prev = await api.getChapter(sorted[idx - 1].id);
+              const prevTail = (prev.content ?? "").trim().slice(-1600);
+              if (prevTail) return { tail: prevTail, mode: "opening" };
+            } catch {
+              // 取上一章失败时退回主线兜底。
+            }
+          }
+        }
+        // 无上一章正文，但有主线也可起笔。
+        if (mainline) return { tail: "", mode: "opening" };
+        return null;
+      };
 
       setGhostStreaming(true);
       setGhostLiveText("");
@@ -554,55 +582,66 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
       let assembled = "";
       let streamError: string | null = null;
 
-      api
-        .streamContinue(
-          {
-            project_id: projectId,
-            tail_text: tail,
-            instruction: instruction.trim(),
-            directive: opts?.directive ?? null,
-            chapter_title: titleRef.current.trim() || "未命名章节",
-            budget: "medium",
-            target_latency_ms: 6000,
-          },
-          {
-            signal: controller.signal,
-            onEvent: (event) => {
-              if (event.type === "delta") {
-                assembled = event.replace != null ? event.replace : assembled + event.text;
-                setGhostLiveText(assembled);
-              } else if (event.type === "stage") {
-                setGhostStages((prev) => foldGhostStage(prev, event));
-              } else if (event.type === "done") {
-                ghostSeq.current += 1;
-                const id = `ghost-${ghostSeq.current}`;
-                const candidate: GhostCandidate = {
-                  id,
-                  label: `版本 ${ghostSeq.current}`,
-                  text: event.result_text,
-                  score: event.consistency_score,
-                  issues: event.issues,
-                  readerReaction: event.reader_reaction,
-                  directive: event.directive,
-                };
-                setGhostCandidates((prev) => [...prev, candidate]);
-                setActiveGhostId(id);
-                setGhostStages((prev) => ({
-                  ...prev,
-                  intent: event.directive,
-                  score: event.consistency_score,
-                  issues: event.issues,
-                  reaction: event.reader_reaction,
-                  repairing: false,
-                }));
-              } else if (event.type === "error") {
-                streamError = event.message;
-              }
-            },
-          },
-        )
-        .then(() => {
-          if (streamError) toast.error(streamError);
+      resolveSource()
+        .then((source) => {
+          if (!source) {
+            toast.error("光标前没有正文，且未找到上一章可承接");
+            setGhostStreaming(false);
+            ghostAbortRef.current = null;
+            return;
+          }
+          return api
+            .streamContinue(
+              {
+                project_id: projectId,
+                tail_text: source.tail,
+                instruction: instruction.trim(),
+                directive: opts?.directive ?? null,
+                chapter_title: titleRef.current.trim() || "未命名章节",
+                budget: "medium",
+                target_latency_ms: 6000,
+                mode: source.mode,
+                mainline,
+              },
+              {
+                signal: controller.signal,
+                onEvent: (event) => {
+                  if (event.type === "delta") {
+                    assembled = event.replace != null ? event.replace : assembled + event.text;
+                    setGhostLiveText(assembled);
+                  } else if (event.type === "stage") {
+                    setGhostStages((prev) => foldGhostStage(prev, event));
+                  } else if (event.type === "done") {
+                    ghostSeq.current += 1;
+                    const id = `ghost-${ghostSeq.current}`;
+                    const candidate: GhostCandidate = {
+                      id,
+                      label: `版本 ${ghostSeq.current}`,
+                      text: event.result_text,
+                      score: event.consistency_score,
+                      issues: event.issues,
+                      readerReaction: event.reader_reaction,
+                      directive: event.directive,
+                    };
+                    setGhostCandidates((prev) => [...prev, candidate]);
+                    setActiveGhostId(id);
+                    setGhostStages((prev) => ({
+                      ...prev,
+                      intent: event.directive,
+                      score: event.consistency_score,
+                      issues: event.issues,
+                      reaction: event.reader_reaction,
+                      repairing: false,
+                    }));
+                  } else if (event.type === "error") {
+                    streamError = event.message;
+                  }
+                },
+              },
+            )
+            .then(() => {
+              if (streamError) toast.error(streamError);
+            });
         })
         .catch((error) => {
           if (controller.signal.aborted) return;

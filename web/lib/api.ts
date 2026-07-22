@@ -45,6 +45,9 @@ import {
   InspirationGraphPatch,
   InspirationProposal,
   InspirationProposalAction,
+  ChapterMainline,
+  MainlineDiscussionPayload,
+  MainlineDiscussionEvent,
   TaskType,
   WritingDirective,
 } from "./types";
@@ -489,6 +492,62 @@ export const api = {
         if (!data) continue;
         try {
           handlers.onEvent(JSON.parse(data) as InspirationDiscussionEvent);
+        } catch {
+          // Ignore incomplete or invalid stream chunks.
+        }
+      }
+    };
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lastBreak = buffer.lastIndexOf('\n\n');
+        if (lastBreak === -1) continue;
+        flush(buffer.slice(0, lastBreak));
+        buffer = buffer.slice(lastBreak + 2);
+      }
+      buffer += decoder.decode();
+      if (buffer.trim()) flush(buffer);
+    } finally {
+      reader.releaseLock();
+    }
+  },
+  async getMainline(chapterId: number): Promise<ChapterMainline | null> {
+    const data = await request<ChapterMainline | Record<string, never>>(`/chapters/${chapterId}/mainline`);
+    return data && "content" in data ? (data as ChapterMainline) : null;
+  },
+  async saveMainline(chapterId: number, payload: { project_id: number; content: string }): Promise<ChapterMainline> {
+    return request<ChapterMainline>(`/chapters/${chapterId}/mainline`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+  async streamMainlineDiscussion(
+    projectId: number,
+    chapterId: number,
+    payload: MainlineDiscussionPayload,
+    handlers: { onEvent: (event: MainlineDiscussionEvent) => void; signal?: AbortSignal },
+  ) {
+    const response = await fetch(`${getApiBase()}/projects/${projectId}/chapters/${chapterId}/mainline/discussion/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: handlers.signal,
+    });
+    if (!response.ok || !response.body) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(detail || `请求失败：HTTP ${response.status}`);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const flush = (chunk: string) => {
+      for (const rawEvent of chunk.split('\n\n')) {
+        const data = rawEvent.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n');
+        if (!data) continue;
+        try {
+          handlers.onEvent(JSON.parse(data) as MainlineDiscussionEvent);
         } catch {
           // Ignore incomplete or invalid stream chunks.
         }

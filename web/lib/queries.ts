@@ -146,6 +146,23 @@ export function useChapters(projectId: number) {
   });
 }
 
+export function useMainline(chapterId: number | null) {
+  return useQuery({
+    queryKey: ["mainline", chapterId],
+    queryFn: () => api.getMainline(chapterId as number),
+    enabled: chapterId != null && Number.isFinite(chapterId),
+  });
+}
+
+export function useSaveMainline(chapterId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { project_id: number; content: string }) =>
+      api.saveMainline(chapterId as number, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mainline", chapterId] }),
+  });
+}
+
 export function useLore(projectId: number) {
   return useQuery({
     queryKey: ["lore", projectId],

@@ -282,6 +282,19 @@ def init_db() -> None:
         )
         c.execute(
             """
+            CREATE TABLE IF NOT EXISTS chapter_mainlines (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                chapter_id INT NOT NULL,
+                content TEXT NOT NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'confirmed',
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_mainline_chapter(project_id, chapter_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
             CREATE TABLE IF NOT EXISTS daily_todos (
                 id INT PRIMARY KEY AUTO_INCREMENT,
                 project_id INT NOT NULL,

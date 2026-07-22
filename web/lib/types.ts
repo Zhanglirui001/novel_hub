@@ -218,6 +218,8 @@ export interface ContinueRequest {
   chapter_title: string;
   budget: Budget;
   target_latency_ms: number;
+  mode?: "continue" | "opening";
+  mainline?: string;
 }
 
 /** 续写流式事件（对应后端 writing_agent 的 custom stream）。 */
@@ -544,4 +546,31 @@ export interface InspirationDiscussionPayload {
 export type InspirationDiscussionEvent =
   | { type: "delta"; text: string }
   | { type: "done"; session: ChatSessionSummary; messages: ChatSessionMessage[] }
+  | { type: "error"; message: string };
+
+/** 章节级故事主线。 */
+export interface ChapterMainline {
+  id: number;
+  project_id: number;
+  chapter_id: number;
+  content: string;
+  status: string;
+  updated_at: string;
+}
+
+/** 剧情讨论中的一轮对话（前端携带历史，无状态）。 */
+export interface MainlineDiscussionTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface MainlineDiscussionPayload {
+  project_id: number;
+  content: string;
+  history: MainlineDiscussionTurn[];
+}
+
+export type MainlineDiscussionEvent =
+  | { type: "delta"; text: string }
+  | { type: "done"; reply: string }
   | { type: "error"; message: string };

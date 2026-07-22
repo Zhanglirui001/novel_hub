@@ -70,6 +70,8 @@ class ContinuePayload(BaseModel):
     chapter_title: str = "未命名章节"
     budget: str = "medium"
     target_latency_ms: int = 6000
+    mode: str = "continue"  # continue（段中续写）| opening（新章起笔）
+    mainline: str = ""  # 本章故事主线，按需引用
 
 
 class ContinueAcceptPayload(BaseModel):
@@ -218,6 +220,22 @@ class InspirationGraphPatchPayload(BaseModel):
 class InspirationDiscussionPayload(BaseModel):
     content: str = Field(min_length=1)
     selected_node_ids: list[str] = Field(default_factory=list)
+
+
+class MainlineDiscussionTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class MainlineDiscussionPayload(BaseModel):
+    project_id: int
+    content: str = Field(min_length=1)
+    history: list[MainlineDiscussionTurn] = Field(default_factory=list)
+
+
+class MainlineSavePayload(BaseModel):
+    project_id: int
+    content: str = ""
 
 
 class InspirationProposalActionPayload(BaseModel):

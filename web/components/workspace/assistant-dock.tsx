@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Layers, PenLine, ScrollText, ShieldCheck, Clock, Files, MessageSquare } from "lucide-react";
+import { FileText, Layers, PenLine, ScrollText, ShieldCheck, Clock, Files, MessageSquare, Drama } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,6 +10,7 @@ import { GenerationPanel } from "./generation-panel";
 import { InlineRevisePanel } from "./inline-revise-panel";
 import { LorePanel } from "./lore-panel";
 import { PatchReview } from "./patch-review";
+import { PlotDiscussionPanel } from "./plot-discussion-panel";
 import { StylePanel } from "./style-panel";
 import { TimelinePanel } from "./timeline-panel";
 import { useWorkspace } from "./workspace-context";
@@ -17,6 +18,7 @@ import { useWorkspace } from "./workspace-context";
 const tabs = [
   { value: "chat", label: "聊天", icon: MessageSquare, Panel: ChatPanel },
   { value: "create", label: "创作", icon: PenLine, Panel: GenerationPanel },
+  { value: "plot", label: "剧情", icon: Drama, Panel: PlotDiscussionPanel },
   { value: "revise", label: "版本", icon: Files, Panel: InlineRevisePanel },
   { value: "consistency", label: "一致性", icon: ShieldCheck, Panel: ConsistencyPanel },
   { value: "patch", label: "修改", icon: Layers, Panel: PatchReview },
