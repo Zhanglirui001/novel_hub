@@ -62,6 +62,16 @@ class DraftPayload(BaseModel):
     target_latency_ms: int = 6000
 
 
+class ContinuePayload(BaseModel):
+    project_id: int
+    tail_text: str = ""
+    instruction: str = ""
+    directive: dict[str, Any] | None = None
+    chapter_title: str = "未命名章节"
+    budget: str = "medium"
+    target_latency_ms: int = 6000
+
+
 class PatchApplyPayload(BaseModel):
     patch_set_id: int
     accepted_ids: list[int]

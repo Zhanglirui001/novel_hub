@@ -13,6 +13,7 @@ from app.schemas import (
     ChatMessageCreatePayload,
     ChatSessionCreatePayload,
     ConsistencyPayload,
+    ContinuePayload,
     DailyCheckinPayload,
     DailyCheckinMakeupPayload,
     DailyTodoCreatePayload,
@@ -38,6 +39,7 @@ from app.schemas import (
 from app.services import ChatService, ConsistencyGuard, GenerationService, InspirationService, LoreService, StyleService
 from app.services.inspiration_service import GraphConflictError
 from app.services.checkin_service import CheckinService
+from app.services.writing_agent import WritingAgent
 from app.services import backup_service, settings_service
 
 init_db()
@@ -61,6 +63,7 @@ consistency_guard = ConsistencyGuard()
 chat_service = ChatService()
 inspiration_service = InspirationService()
 checkin_service = CheckinService()
+writing_agent = WritingAgent()
 
 
 def _checkin_error(exc: ValueError) -> HTTPException:
@@ -591,6 +594,28 @@ def continue_draft(payload: DraftPayload):
         input_text=payload.input_text,
         budget=payload.budget,
         target_latency_ms=payload.target_latency_ms,
+    )
+
+
+@app.post("/draft/continue/stream")
+def continue_draft_stream(payload: ContinuePayload):
+    events = writing_agent.stream_continue(
+        project_id=payload.project_id,
+        tail_text=payload.tail_text,
+        instruction=payload.instruction,
+        directive=payload.directive,
+        budget=payload.budget,
+        target_latency_ms=payload.target_latency_ms,
+    )
+
+    def event_stream():
+        for event in events:
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

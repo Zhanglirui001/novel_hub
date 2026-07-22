@@ -564,11 +564,114 @@ lop:
 
 
 
-
-
-
-
 ### Agent功能开发
+
+> 该项目的核心模块应该是写小说的模块，希望采用langgraph的agent框架，识别用户对于下文内容的要求，结合上下文、设定、风格等信息，提供一段小说文本的预览，这样的需求结合当前项目你觉得如何设计交互、如设计agent的功能逻辑你觉得比较优秀，作为一个别出心裁的懂读者懂用户的优秀开发工程师以及设计师。
+
+**一个前提判断：你现在的"agent"是装饰性的**
+
+在 [generation_service.py:40-63](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/generation_service.py#L40-L63) 里，`planner` 和 `judge` 两次模型调用的**输出被直接丢弃了**——只写进了 `model_run_logs`，没有参与决策。真正干活的只有 `writer` + `ConsistencyGuard`（后者还是纯规则、非 LLM）。所以现在是"披着三模型外衣的单步生成 + 一次规则修复"。
+
+这不是缺点，反而是好消息：**LangGraph 正好能把这套已经存在的骨架（planner→writer→judge→repair 循环）变成真实的、有状态的图**。你不是推倒重来，是把假节点做实。
+
+------
+
+**一、交互设计：预览应该是"就地生长的幽灵文本"，不是侧栏里的一坨结果**
+
+用户说"识别用户对下文的要求"+"提供一段预览"。当前 [generation-panel.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/generation-panel.tsx) 的模式是：点"续写"→ 右栏弹出一整段结果 → 跳到 patch 面板逐条采纳。这套对**润色**很对（有原文可 diff），但对**续写**是别扭的——续写没有源文本可 diff，把新内容塞进侧栏也脱离了上下文语境。
+
+我的主张是一条更懂写作者的动线，我叫它 **意图条 → 流式幽灵预览 → 就地落笔**：
+
+1. **意图条**：光标停在正文末尾（或选区），正文里就地浮出一条细输入框。作者可以：
+
+   - 留空 =「顺着往下写」
+   - 用一句大白话说要求：`让男主这里先犹豫，再冷冷拒绝`
+   - 或点快捷 chip：推进剧情 / 加段对话 / 环境铺陈 / 制造冲突 / 放慢节奏 / 回收伏笔
+
+   这才是"识别用户对下文的要求"的入口——写作者脑子里的东西通常是**一个模糊的拉力**（"这里要有张力"），而不是"continue"这个动词。把它做成按钮就把用户的意图压扁了。
+
+2. **幽灵预览**：生成的文本**直接以暗色斜体流式出现在光标后的正文里**（复用你 [editor-pane.tsx:150-160](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/editor-pane.tsx#L150-L160) 已有的"原地预览"渲染思路，把 `InlineDiffCard` 换成 ghost-text）。读者在真实语境里看它成形，而不是在一个脱离上下文的框里。
+
+3. **轻 HUD**：流式时顶部一行极简状态——`已参考设定·3 · 命中文风锚点 · 一致性 92`。透明但不吵。你已经有 [consistency-ring.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/consistency-ring.tsx)，直接复用。
+
+4. **落笔三选一**：`采纳(Tab)` / `微调(再说一句改)` / `换一版(Esc 循环候选)`。多候选做成轮播——**"懂读者"就是给选择、把摩擦降到最低**。采纳后才固化、autosave、写 timeline、更新风格样本。
+
+一句话概括交互论点：**预览是"非破坏性、在语境内、流式、可对话微调"的一等公民**，而不是侧栏的只读输出。
+
+------
+
+**二、Agent 逻辑：一张真实的 LangGraph 状态图**
+
+State（`TypedDict`）：光标上下文、结构化写作指令、候选列表、critique、一致性分数、修订计数。节点：
+
+| 节点                | 职责                                                         | 替代现在的什么                                      |
+| ------------------- | ------------------------------------------------------------ | --------------------------------------------------- |
+| **intent 理解意图** | 把大白话要求 + 光标上下文，解析成结构化 `WritingDirective`（意图类型、目标节拍、情绪曲线、POV/时态锁、约需字数、must_include=术语/待回收伏笔、must_avoid=禁忌/OOC、承接锚点=刚发生了什么） | 现在被丢弃的 `planner`                              |
+| **retrieve 取材**   | 按 directive **相关性挑选**上下文，而不是全量 dump。当前 [lore_service.build_context](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/lore_service.py#L68) 把所有设定全塞进 prompt，章节一多必然爆——这里加一层筛选/排序 | 现在 `_compose_writer_prompt` 的 `[:5]/[:8]` 硬截断 |
+| **write 落笔**      | 按 directive + 文风卡 + 取材包**流式**产出候选               | 现有 `writer`                                       |
+| **guard 守护**      | `ConsistencyGuard.check` → 结构化 issues + 分数（纯规则、便宜、非 LLM，很对） | 现有 guard                                          |
+| **判定边**          | issues 存在且修订<N → 回 **write/repair**；否则 → done。**这个环是 LangGraph 相对手写代码最大的价值**：你现在 [generation_service.py:48-56](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/generation_service.py#L48-L56) 只硬编码修一次，图能让它成为有界、可配置的循环 | 现有一次性 repair                                   |
+| **judge 品鉴**      | 真正评估"是否满足 directive、情绪是否兑现"，作为高预算下的 gate 或预览上的一行注解 | 现在被丢弃的 `judge`                                |
+
+**人在环内（关键）**：在 write 之后用 LangGraph 的 `interrupt` **把图挂起**，流式把候选推给前端，等 `采纳/微调/换版`。用户点"微调"时，带着追加指令 `resume`——因为 checkpoint 里 directive 和取材包还在，**微调和换版都是廉价的、有状态的增量**，不必从 intent 重跑。thread_id 用章节 id。这正是 LangGraph checkpointer 的主场。
+
+**流式**：LangGraph 的 `astream_events` 直接映射到你已有的 SSE 基建（[modeling.py:126 stream_chat](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/modeling.py#L126)）——节点切换事件 = HUD 的"思考轨迹"，token delta = 幽灵文本增量，走同一条 SSE 通道。
+
+------
+
+**三、两个"别出心裁"、真正懂读者的点**
+
+1. **读者视角预检**：在 guard 旁加一个轻量 critique，回答的不是"设定对不对"，而是"**我是读者，读到这段想不想翻下一页**"——揪出平淡开头、张力掉线、信息倾倒。在预览上给一句读者反应：`读者感受：悬念拉满，但这段对话有点出戏`。这是通用 continue 给不了的东西。
+2. **伏笔/承诺账本**：你已经有 `timeline_events`（[lore_service.py:49](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/lore_service.py#L49)）。把"对读者埋下的未回收承诺"也记进去，intent 节点在合适位置提示`此处可回收伏笔：X`。读者爽感的本质是"埋的坑被填了"——把这个显式追踪起来，是把写作助手和"文本补全器"拉开差距的地方。
+
+------
+
+**四、落地路径（不动你现有闭环，增量嵌入）**
+
+- 依赖：`langgraph` + `langchain-core` 进 [requirements.txt](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/requirements.txt)。
+- **不引入新 LLM 客户端**：写一个薄 adapter 节点，内部还是调你的 `QwenModelClient.generate/stream`，`ModelRouter` 继续为每个节点选模型。你的模型层不用改。
+- 新建 `app/services/writing_graph.py` 编译图；`GenerationService.run` 变成"调用图 + 沿用现有 patch/save"。ConsistencyGuard 原样做成一个纯函数节点。
+- 新端点 `POST /draft/continue/stream`（SSE），事件流：`directive → node 进度 → token delta → candidate 完成 → score/issues`。前端 [generation-panel.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/generation-panel.tsx) / [editor-pane.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/editor-pane.tsx) 消费它渲染幽灵预览。
+- **Checkpointer**：MVP 先用 `MemorySaver`（按 thread 存内存），采纳结果仍落你现有的 `chapters/patch_sets` 表。要跨进程持久化再上自定义 MySQL saver（LangGraph 官方只带 Sqlite/Postgres saver，MySQL 需自写——所以 MVP 别急）。
+
+------
+
+**需要你拍板的两点**
+
+1. **续写的采纳形态**：走我推荐的"幽灵文本就地采纳"，还是沿用你现有的 `patch_set` 逐条 diff？（我强烈建议续写用前者、润色保留后者——两种任务本质不同。）
+2. **图是替换还是并存**：`GenerationService.run` 直接改造成图驱动，还是新增 `run_graph` 并存、灰度切换？
+
+你要是认可这个方向，我可以进 plan 模式把 `writing_graph.py` 的节点签名、`WritingDirective` 的 schema、SSE 事件协议和前端幽灵预览组件的改动逐一列成可执行的实施计划。要我继续吗？
+
+> 按照你的建议落地，不需要太保守，我需要极致的用户体验。
+
+**Already in place (before this session)**
+
+- **Backend agent** [app/services/writing_agent.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/writing_agent.py) — the full LangGraph state graph (`intent → retrieve → write → guard →[有界修订]→ repair → reader_lens`) with heuristic offline fallbacks.
+- **SSE endpoint** `POST /draft/continue/stream` in [app/api.py:600](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/api.py#L600) + `ContinuePayload` in [app/schemas.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/schemas.py).
+- **API client** `api.streamContinue()` and all TS types (`ContinueStreamEvent`, `GhostCandidate`, `GhostStages`, `WritingDirective`) in [web/lib/api.ts](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/api.ts) / [web/lib/types.ts](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/types.ts).
+
+**What I completed — the frontend interaction**
+
+1. **Workspace state slice** in [workspace-context.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/workspace-context.tsx) — ghost anchor/streaming/stages/candidates, `startGhost`/`runContinue`/`acceptGhost`/`cancelGhost`, the SSE event fold into HUD state, candidate carousel, and directive reuse so 微调/换一版 are cheap incremental calls. Ghost state is reset on chapter switch.
+2. **New control surface** [continue-ghost-panel.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/continue-ghost-panel.tsx) — the 意图条 (free-text + 6 quick chips), the light HUD (`意图 · 已参考设定·N · 一致性 · 生成中`), the 读者感受 line, and 落笔三选一 (采纳 / 微调 / 换一版) with a `‹ x/n ›` candidate carousel.
+3. **Inline ghost rendering** in [editor-pane.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/editor-pane.tsx) — streamed text renders as dark-italic ghost text *at the cursor inside the real body* (with a streaming caret ▍), plus `Tab`=采纳 / `Esc`=放弃 keybindings.
+
+**Verified**
+
+- `tsc --noEmit` clean; `langgraph` imports and the graph compiles; `WritingAgent` instantiates.
+- **End-to-end offline run**: `intent → retrieve → 21×delta → guard → reader` fires correctly, and "加一段对话" parses to the `dialogue` intent — the whole loop works without a live model or DB.
+
+**Two decisions — resolved by the existing scaffolding, not re-asked**
+
+- **采纳形态**: ghost-text in-place accept (the endpoint returns `result_text` + `GhostCandidate`, not `patch_set`). Polish keeps its patch/diff flow untouched.
+- **图替换 vs 并存**: coexist — this is a *new* `/draft/continue/stream` route alongside the existing `/draft/continue`.
+
+**One honest gap**
+
+Accept currently does **insert at anchor + autosave** (persists the chapter). The proposal's "写 timeline / 更新风格样本 on accept" needs backend hooks that aren't in the current diff — I didn't invent them. If you want that, the natural spot is a small server-side step on accept (or piggybacking on chapter save). Say the word and I'll wire it.
+
+Nothing here is committed — all changes are in the working tree for you to review.
 
 
 

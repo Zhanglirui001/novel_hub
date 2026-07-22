@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useBackupChapter, useBackupStatus } from "@/lib/queries";
 import { cn, countChars } from "@/lib/utils";
+import { ContinueGhostPanel } from "./continue-ghost-panel";
 import { InlineDiffCard } from "./inline-diff-card";
 import { InlineReviseOverlay } from "./inline-revise-overlay";
 import { useWorkspace } from "./workspace-context";
@@ -45,6 +46,13 @@ export function EditorPane() {
     registerEditor,
     reviseTarget,
     activeCandidateId,
+    ghostAnchor,
+    ghostStreaming,
+    ghostLiveText,
+    ghostCandidates,
+    activeGhostId,
+    acceptGhost,
+    cancelGhost,
   } = useWorkspace();
 
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -98,6 +106,27 @@ export function EditorPane() {
   const canSave = saveStatus === "dirty" || saveStatus === "error";
   // 预览模式：有目标 + 有 active 候选时，正文以「原地 diff」呈现，textarea 暂时让位。
   const previewing = !!reviseTarget && activeCandidateId != null;
+  // 续写幽灵预览：光标处内联流式渲染，textarea 让位给只读正文。
+  const ghosting = ghostAnchor !== null;
+  const activeGhost = ghostCandidates.find((c) => c.id === activeGhostId) ?? null;
+  const ghostText = ghostStreaming ? ghostLiveText : activeGhost?.text ?? "";
+
+  // 续写态下的键盘落笔：Tab 采纳、Esc 放弃。
+  React.useEffect(() => {
+    if (!ghosting) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancelGhost();
+      } else if (e.key === "Tab") {
+        if (ghostStreaming || !activeGhost) return;
+        e.preventDefault();
+        acceptGhost();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [ghosting, ghostStreaming, activeGhost, acceptGhost, cancelGhost]);
 
   return (
     <div className="flex h-full flex-col">
@@ -147,7 +176,23 @@ export function EditorPane() {
       {/* 正文：限定阅读栏宽，杂志沉浸感 */}
       <div className="relative flex-1 overflow-y-auto soft-scroll">
         <div className="mx-auto max-w-2xl px-8 py-8">
-          {previewing && reviseTarget ? (
+          {ghosting ? (
+            // 续写幽灵预览：光标前后为只读正文，光标处内联流式「幽灵文本」。
+            <div className="prose-editor min-h-[60vh] w-full whitespace-pre-wrap break-words">
+              <span className="text-foreground/80">{draft.slice(0, ghostAnchor ?? 0)}</span>
+              {ghostText ? (
+                <span className="italic text-primary/80">
+                  {ghostText}
+                  {ghostStreaming && <span className="ml-0.5 animate-pulse">▍</span>}
+                </span>
+              ) : (
+                ghostStreaming && (
+                  <span className="italic text-muted-foreground/60">构思中…</span>
+                )
+              )}
+              <span className="text-foreground/80">{draft.slice(ghostAnchor ?? 0)}</span>
+            </div>
+          ) : previewing && reviseTarget ? (
             // 原地预览：前后文只读，中间嵌入 diff 卡。
             <div className="prose-editor min-h-[60vh] w-full whitespace-pre-wrap break-words">
               <span className="text-foreground/75">
@@ -177,8 +222,10 @@ export function EditorPane() {
           )}
         </div>
 
-        {/* 选中文字时浮出的内联批注/分析浮层（预览模式下隐藏） */}
-        {!previewing && <InlineReviseOverlay />}
+        {/* 选中文字时浮出的内联批注/分析浮层（预览/续写态下隐藏） */}
+        {!previewing && !ghosting && <InlineReviseOverlay />}
+        {/* 续写：意图条 + 幽灵预览 HUD + 落笔控制（预览态下隐藏） */}
+        {!previewing && <ContinueGhostPanel />}
       </div>
 
       {/* 状态条 */}

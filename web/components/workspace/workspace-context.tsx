@@ -18,7 +18,15 @@ import {
   useRenameChapter,
   useSaveChapter,
 } from "@/lib/queries";
-import type { ChatSessionMessage, ChatSessionSummary, GenerationResult } from "@/lib/types";
+import type {
+  ChatSessionMessage,
+  ChatSessionSummary,
+  ContinueStreamEvent,
+  GenerationResult,
+  GhostCandidate,
+  GhostStages,
+  WritingDirective,
+} from "@/lib/types";
 const AUTOSAVE_DEBOUNCE_MS = 5000;
 const DEFAULT_GROUP_TITLE = "默认卷";
 const MAX_CHAPTER_TITLE_LENGTH = 255;
@@ -95,6 +103,18 @@ interface WorkspaceState {
   clearRevise: () => void;
   replaceRange: (start: number, end: number, text: string) => void;
   registerEditor: (el: HTMLTextAreaElement | null) => void;
+  // ghost 续写：意图条 → 流式幽灵预览 → 就地落笔
+  ghostAnchor: number | null;
+  ghostStreaming: boolean;
+  ghostStages: GhostStages;
+  ghostCandidates: GhostCandidate[];
+  activeGhostId: string | null;
+  ghostLiveText: string;
+  startGhost: () => void;
+  runContinue: (instruction: string, opts?: { directive?: WritingDirective | null }) => void;
+  setActiveGhost: (id: string) => void;
+  acceptGhost: () => void;
+  cancelGhost: () => void;
   chatSessions: ChatSession[];
   activeChatSessionId: number | null;
   activeChatSession: ChatSession | null;
@@ -132,6 +152,31 @@ function mapSessions(rows: ChatSessionSummary[] | undefined): ChatSession[] {
     }));
 }
 
+// 把一条 stage 事件折叠进 HUD 状态。
+function foldGhostStage(prev: GhostStages, event: ContinueStreamEvent): GhostStages {
+  if (event.type !== "stage") return prev;
+  switch (event.key) {
+    case "intent":
+      return { ...prev, intent: event.directive };
+    case "retrieve": {
+      const picked = event.picked ?? {};
+      const count =
+        (picked.characters?.length ?? 0) +
+        (picked.world_rules?.length ?? 0) +
+        (picked.terms?.length ?? 0);
+      return { ...prev, retrieveCount: count };
+    }
+    case "guard":
+      return { ...prev, score: event.score, issues: event.issues, repairing: false };
+    case "repair":
+      return { ...prev, repairing: true };
+    case "reader":
+      return { ...prev, reaction: event.reaction };
+    default:
+      return prev;
+  }
+}
+
 export function WorkspaceProvider({ projectId, children }: { projectId: number; children: React.ReactNode }) {
   const [draft, setDraft] = React.useState("");
   const [chapterTitle, setChapterTitle] = React.useState("第1章");
@@ -146,6 +191,12 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
   const [reviseTarget, setReviseTarget] = React.useState<ReviseTarget | null>(null);
   const [candidates, setCandidates] = React.useState<ReviseCandidate[]>([]);
   const [activeCandidateId, setActiveCandidateId] = React.useState<string | null>(null);
+  const [ghostAnchor, setGhostAnchor] = React.useState<number | null>(null);
+  const [ghostStreaming, setGhostStreaming] = React.useState(false);
+  const [ghostStages, setGhostStages] = React.useState<GhostStages>({});
+  const [ghostCandidates, setGhostCandidates] = React.useState<GhostCandidate[]>([]);
+  const [activeGhostId, setActiveGhostId] = React.useState<string | null>(null);
+  const [ghostLiveText, setGhostLiveText] = React.useState("");
   const [chatDraft, setChatDraft] = React.useState("");
   const [chatFullscreenOpen, setChatFullscreenOpen] = React.useState(false);
   const [activeChatSessionId, setActiveChatSessionId] = React.useState<number | null>(null);
@@ -159,6 +210,26 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
   const registerEditor = React.useCallback((el: HTMLTextAreaElement | null) => {
     editorRef.current = el;
   }, []);
+
+  // ghost 续写：在 async 流回调里需要读到最新值，用 ref 镜像。
+  const ghostSeq = React.useRef(0);
+  const ghostAbortRef = React.useRef<AbortController | null>(null);
+  const ghostAnchorRef = React.useRef<number | null>(null);
+  const ghostStreamingRef = React.useRef(false);
+  const ghostCandidatesRef = React.useRef<GhostCandidate[]>([]);
+  const activeGhostIdRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    ghostAnchorRef.current = ghostAnchor;
+  }, [ghostAnchor]);
+  React.useEffect(() => {
+    ghostStreamingRef.current = ghostStreaming;
+  }, [ghostStreaming]);
+  React.useEffect(() => {
+    ghostCandidatesRef.current = ghostCandidates;
+  }, [ghostCandidates]);
+  React.useEffect(() => {
+    activeGhostIdRef.current = activeGhostId;
+  }, [activeGhostId]);
 
   const saveChapter = useSaveChapter(projectId);
   const createChatSessionMutation = useCreateChatSession(projectId);
@@ -273,6 +344,15 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
     setLastResult(null);
     setSelection(null);
     clearRevise();
+    // 切章时丢弃未落笔的幽灵续写。
+    ghostAbortRef.current?.abort();
+    ghostAbortRef.current = null;
+    setGhostAnchor(null);
+    setGhostStreaming(false);
+    setGhostStages({});
+    setGhostCandidates([]);
+    setActiveGhostId(null);
+    setGhostLiveText("");
     setSaveStatus(id ? "saved" : "idle");
   }, [clearRevise]);
 
@@ -423,6 +503,135 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
     }
   }, [projectId, saveChapter]);
 
+  // ---- ghost 续写：意图条 → 流式幽灵预览 → 就地落笔 ----------------------
+
+  const cancelGhost = React.useCallback(() => {
+    ghostAbortRef.current?.abort();
+    ghostAbortRef.current = null;
+    setGhostAnchor(null);
+    setGhostStreaming(false);
+    setGhostStages({});
+    setGhostCandidates([]);
+    setActiveGhostId(null);
+    setGhostLiveText("");
+  }, []);
+
+  const startGhost = React.useCallback(() => {
+    const el = editorRef.current;
+    const caret = el ? el.selectionStart ?? draftRef.current.length : draftRef.current.length;
+    ghostAbortRef.current?.abort();
+    ghostAbortRef.current = null;
+    setGhostAnchor(caret);
+    setGhostStreaming(false);
+    setGhostStages({});
+    setGhostCandidates([]);
+    setActiveGhostId(null);
+    setGhostLiveText("");
+  }, []);
+
+  const setActiveGhost = React.useCallback((id: string) => {
+    setActiveGhostId(id);
+  }, []);
+
+  const runContinue = React.useCallback(
+    (instruction: string, opts?: { directive?: WritingDirective | null }) => {
+      const anchor = ghostAnchorRef.current;
+      if (anchor == null || ghostStreamingRef.current) return;
+
+      const tail = draftRef.current.slice(0, anchor);
+      if (!tail.trim()) {
+        toast.error("光标前没有正文可续写");
+        return;
+      }
+
+      setGhostStreaming(true);
+      setGhostLiveText("");
+      setGhostStages({});
+
+      const controller = new AbortController();
+      ghostAbortRef.current = controller;
+
+      let assembled = "";
+      let streamError: string | null = null;
+
+      api
+        .streamContinue(
+          {
+            project_id: projectId,
+            tail_text: tail,
+            instruction: instruction.trim(),
+            directive: opts?.directive ?? null,
+            chapter_title: titleRef.current.trim() || "未命名章节",
+            budget: "medium",
+            target_latency_ms: 6000,
+          },
+          {
+            signal: controller.signal,
+            onEvent: (event) => {
+              if (event.type === "delta") {
+                assembled = event.replace != null ? event.replace : assembled + event.text;
+                setGhostLiveText(assembled);
+              } else if (event.type === "stage") {
+                setGhostStages((prev) => foldGhostStage(prev, event));
+              } else if (event.type === "done") {
+                ghostSeq.current += 1;
+                const id = `ghost-${ghostSeq.current}`;
+                const candidate: GhostCandidate = {
+                  id,
+                  label: `版本 ${ghostSeq.current}`,
+                  text: event.result_text,
+                  score: event.consistency_score,
+                  issues: event.issues,
+                  readerReaction: event.reader_reaction,
+                  directive: event.directive,
+                };
+                setGhostCandidates((prev) => [...prev, candidate]);
+                setActiveGhostId(id);
+                setGhostStages((prev) => ({
+                  ...prev,
+                  intent: event.directive,
+                  score: event.consistency_score,
+                  issues: event.issues,
+                  reaction: event.reader_reaction,
+                  repairing: false,
+                }));
+              } else if (event.type === "error") {
+                streamError = event.message;
+              }
+            },
+          },
+        )
+        .then(() => {
+          if (streamError) toast.error(streamError);
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          toast.error(error instanceof Error ? error.message : "续写失败");
+        })
+        .finally(() => {
+          setGhostStreaming(false);
+          setGhostLiveText("");
+          ghostAbortRef.current = null;
+        });
+    },
+    [projectId],
+  );
+
+  const acceptGhost = React.useCallback(() => {
+    const anchor = ghostAnchorRef.current;
+    const candidate = ghostCandidatesRef.current.find((c) => c.id === activeGhostIdRef.current);
+    if (anchor == null || !candidate) return;
+
+    // 光标前若非以空白结尾，补一个换行，避免和前文黏在一起。
+    const before = draftRef.current.slice(0, anchor);
+    const needsBreak = before.length > 0 && !/\s$/.test(before);
+    const insertText = (needsBreak ? "\n\n" : "") + candidate.text;
+
+    cancelGhost();
+    replaceRange(anchor, anchor, insertText);
+    window.setTimeout(() => void saveNow(), 0);
+  }, [cancelGhost, replaceRange, saveNow]);
+
   React.useEffect(() => {
     if (skipDirtyRef.current) {
       skipDirtyRef.current = false;
@@ -489,6 +698,17 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
     clearRevise,
     replaceRange,
     registerEditor,
+    ghostAnchor,
+    ghostStreaming,
+    ghostStages,
+    ghostCandidates,
+    activeGhostId,
+    ghostLiveText,
+    startGhost,
+    runContinue,
+    setActiveGhost,
+    acceptGhost,
+    cancelGhost,
     chatSessions,
     activeChatSessionId,
     activeChatSession,

@@ -189,6 +189,75 @@ export interface DraftRequest {
   target_latency_ms: number;
 }
 
+export type ContinueIntent =
+  | "advance"
+  | "dialogue"
+  | "scenery"
+  | "conflict"
+  | "slow"
+  | "payoff"
+  | "free";
+
+export interface WritingDirective {
+  intent_type: ContinueIntent | string;
+  beat: string;
+  emotion: string;
+  pov_lock: string;
+  approx_length: number;
+  must_include: string[];
+  must_avoid: string[];
+  open_threads: string[];
+}
+
+export interface ContinueRequest {
+  project_id: number;
+  tail_text: string;
+  instruction: string;
+  directive?: WritingDirective | null;
+  chapter_title: string;
+  budget: Budget;
+  target_latency_ms: number;
+}
+
+/** 续写流式事件（对应后端 writing_agent 的 custom stream）。 */
+export type ContinueStreamEvent =
+  | { type: "stage"; key: "intent"; directive: WritingDirective; reused?: boolean }
+  | { type: "stage"; key: "retrieve"; picked: Record<string, string[]> }
+  | { type: "stage"; key: "guard"; score: number; issues: ConsistencyIssue[] }
+  | { type: "stage"; key: "repair"; revision: number }
+  | { type: "stage"; key: "reader"; reaction: string }
+  | { type: "delta"; text: string; replace?: string }
+  | {
+      type: "done";
+      directive: WritingDirective;
+      result_text: string;
+      consistency_score: number;
+      issues: ConsistencyIssue[];
+      reader_reaction: string;
+    }
+  | { type: "error"; message: string };
+
+/** 续写实时进度（HUD）。 */
+export interface GhostStages {
+  intent?: WritingDirective;
+  retrieveCount?: number;
+  score?: number;
+  issues?: ConsistencyIssue[];
+  repairing?: boolean;
+  reaction?: string;
+}
+
+/** 一个续写候选版本（幽灵文本轮播）。 */
+export interface GhostCandidate {
+  id: string;
+  label: string;
+  text: string;
+  score: number;
+  issues: ConsistencyIssue[];
+  readerReaction: string;
+  directive: WritingDirective | null;
+}
+
 export interface InlineAnalyzeRequest {
   project_id: number;
   selection: string;

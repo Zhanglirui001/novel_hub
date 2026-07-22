@@ -10,6 +10,8 @@ import {
   ChatSessionSummary,
   ChatStreamEvent,
   ConsistencyResult,
+  ContinueRequest,
+  ContinueStreamEvent,
   DraftRequest,
   GenerationResult,
   InlineAnalyzeRequest,
@@ -202,6 +204,57 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+  },
+  async streamContinue(
+    payload: ContinueRequest,
+    handlers: { onEvent: (event: ContinueStreamEvent) => void; signal?: AbortSignal },
+  ) {
+    const response = await fetch(`${getApiBase()}/draft/continue/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: handlers.signal,
+    });
+    if (!response.ok || !response.body) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(detail || `请求失败：HTTP ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    const flush = (chunk: string) => {
+      for (const rawEvent of chunk.split('\n\n')) {
+        const dataLines = rawEvent
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice('data:'.length).trimStart());
+        if (dataLines.length === 0) continue;
+        const data = dataLines.join('\n');
+        try {
+          handlers.onEvent(JSON.parse(data) as ContinueStreamEvent);
+        } catch {
+          /* 忽略无法解析的心跳/空片段 */
+        }
+      }
+    };
+
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lastBreak = buffer.lastIndexOf('\n\n');
+        if (lastBreak === -1) continue;
+        flush(buffer.slice(0, lastBreak));
+        buffer = buffer.slice(lastBreak + 2);
+      }
+      buffer += decoder.decode();
+      if (buffer.trim()) flush(buffer);
+    } finally {
+      reader.releaseLock();
+    }
   },
   analyzeSelection(payload: InlineAnalyzeRequest) {
     return request<InlineAnalyzeResult>('/draft/analyze', {
