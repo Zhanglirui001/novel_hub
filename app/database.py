@@ -1,4 +1,4 @@
-﻿import queue
+import queue
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -200,6 +200,18 @@ def init_db() -> None:
                 created_at VARCHAR(32) NOT NULL,
                 updated_at VARCHAR(32) NOT NULL,
                 INDEX idx_style_project(project_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS style_samples (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                source VARCHAR(32) NOT NULL,
+                content MEDIUMTEXT NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                INDEX idx_style_sample_project(project_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )

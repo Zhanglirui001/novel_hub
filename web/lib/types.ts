@@ -134,6 +134,7 @@ export interface StyleProfile {
   pov: string;
   cadence: string;
   top_words: string[];
+  accepted_count?: number;
 }
 
 export interface StyleProfileRequest {
@@ -334,6 +335,15 @@ export interface TimelineEvent {
   source: string;
   description?: string;
   event_time: string;
+}
+
+export interface ContinueAcceptResponse {
+  timeline_event: TimelineEvent;
+  style: {
+    updated: boolean;
+    accepted_count: number;
+    metrics?: StyleProfile;
+  };
 }
 
 export type LlmProvider = "qwen" | "openai-compatible" | "stub";

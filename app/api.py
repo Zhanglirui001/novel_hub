@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,7 @@ from app.schemas import (
     ChatMessageCreatePayload,
     ChatSessionCreatePayload,
     ConsistencyPayload,
+    ContinueAcceptPayload,
     ContinuePayload,
     DailyCheckinPayload,
     DailyCheckinMakeupPayload,
@@ -617,6 +619,44 @@ def continue_draft_stream(payload: ContinuePayload):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+_INTENT_LABELS = {
+    "advance": "推进剧情",
+    "dialogue": "对话推进",
+    "scenery": "环境铺陈",
+    "conflict": "制造冲突",
+    "slow": "放慢节奏",
+    "payoff": "回收伏笔",
+    "free": "自由续写",
+}
+
+
+@app.post("/draft/continue/accept")
+def accept_continue(payload: ContinueAcceptPayload):
+    """采纳一段续写后：写时间线「续写落笔」事件 + 回流风格样本刷新活画像。"""
+    text = payload.accepted_text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="accepted_text 不能为空")
+
+    intent_type = (payload.directive or {}).get("intent_type", "free")
+    intent_label = _INTENT_LABELS.get(intent_type, "自由续写")
+
+    snippet = re.split(r"(?<=[。！？!?])", text.replace("\n", " ").strip(), maxsplit=1)[0]
+    if len(snippet) > 40:
+        snippet = snippet[:40] + "…"
+
+    parts = [intent_label]
+    if payload.consistency_score is not None:
+        parts.append(f"一致性 {payload.consistency_score}")
+    parts.append(snippet)
+    description = " · ".join(parts)
+
+    event = lore_service.add_timeline_event(
+        payload.project_id, "续写落笔", description, "continue_accept"
+    )
+    style = style_service.record_accepted_sample(payload.project_id, text)
+    return {"timeline_event": event, "style": style}
 
 
 @app.post("/draft/polish")

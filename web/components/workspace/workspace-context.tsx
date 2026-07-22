@@ -630,7 +630,25 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
     cancelGhost();
     replaceRange(anchor, anchor, insertText);
     window.setTimeout(() => void saveNow(), 0);
-  }, [cancelGhost, replaceRange, saveNow]);
+
+    // 采纳后端钩子：写「续写落笔」时间线 + 回流风格样本刷新活画像。
+    // fire-and-forget——落笔已成功，钩子失败不打断写作，只静默忽略。
+    void api
+      .acceptContinue({
+        project_id: projectId,
+        chapter_title: titleRef.current.trim() || "未命名章节",
+        accepted_text: candidate.text,
+        directive: candidate.directive,
+        consistency_score: candidate.score,
+      })
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["timeline", projectId] });
+        queryClient.invalidateQueries({ queryKey: ["style-profile", projectId] });
+      })
+      .catch(() => {
+        /* 静默：采纳落笔与保存已完成，后端钩子失败不影响写作 */
+      });
+  }, [cancelGhost, replaceRange, saveNow, projectId, queryClient]);
 
   React.useEffect(() => {
     if (skipDirtyRef.current) {

@@ -11,6 +11,7 @@ import {
   ChatStreamEvent,
   ConsistencyResult,
   ContinueRequest,
+  ContinueAcceptResponse,
   ContinueStreamEvent,
   DraftRequest,
   GenerationResult,
@@ -45,6 +46,7 @@ import {
   InspirationProposal,
   InspirationProposalAction,
   TaskType,
+  WritingDirective,
 } from "./types";
 
 function getApiBase() {
@@ -255,6 +257,18 @@ export const api = {
     } finally {
       reader.releaseLock();
     }
+  },
+  acceptContinue(payload: {
+    project_id: number;
+    chapter_title: string;
+    accepted_text: string;
+    directive?: WritingDirective | null;
+    consistency_score?: number | null;
+  }) {
+    return request<ContinueAcceptResponse>('/draft/continue/accept', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
   analyzeSelection(payload: InlineAnalyzeRequest) {
     return request<InlineAnalyzeResult>('/draft/analyze', {

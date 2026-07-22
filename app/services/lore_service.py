@@ -1,4 +1,4 @@
-﻿import json
+import json
 
 from app.database import get_conn, utc_now
 
@@ -107,6 +107,34 @@ class LoreService:
             "terms": terms,
             "taboos": taboos,
             "timeline": timeline,
+        }
+
+    def add_timeline_event(
+        self,
+        project_id: int,
+        label: str,
+        description: str,
+        source: str,
+        event_time: str | None = None,
+    ) -> dict:
+        """向时间线追加一条事件，返回落库后的事件 dict。"""
+        now = utc_now()
+        event_time = event_time or now
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+                INSERT INTO timeline_events (project_id, event_time, label, description, source, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (project_id, event_time, label, description, source, now),
+            )
+        return {
+            "project_id": project_id,
+            "event_time": event_time,
+            "label": label,
+            "description": description,
+            "source": source,
         }
 
     def list_timeline(self, project_id: int) -> list[dict]:

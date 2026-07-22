@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
+import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { useBuildStyleProfile, useStyleProfile } from "@/lib/queries";
 import { useWorkspace } from "./workspace-context";
 
@@ -52,8 +54,20 @@ export function StylePanel() {
           <Stat label="样本数" value={String(profile.sample_count)} />
           <Stat label="视角" value={povLabels[profile.pov] ?? profile.pov} />
           <Stat label="节奏" value={cadenceLabels[profile.cadence] ?? profile.cadence} />
+          {!!profile.accepted_count && profile.accepted_count > 0 && (
+            <Stat
+              label="采纳样本"
+              value={`${profile.accepted_count} 段`}
+              accent
+            />
+          )}
         </div>
       )}
+
+      <div className="flex items-start gap-2 rounded-lg bg-primary/5 px-3 py-2 text-xs text-foreground/75">
+        <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+        <p>文风画像会从你<span className="font-medium text-primary">采纳的续写</span>中持续学习——手输样本作为锚点，采纳文本注入近期语感。</p>
+      </div>
 
       {profile && profile.top_words.length > 0 && (
         <div>
@@ -89,11 +103,16 @@ export function StylePanel() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="rounded-lg border bg-card/50 p-3">
+    <div
+      className={cn(
+        "rounded-lg border bg-card/50 p-3",
+        accent && "border-primary/30 bg-primary/5",
+      )}
+    >
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-0.5 font-medium">{value}</p>
+      <p className={cn("mt-0.5 font-medium", accent && "text-primary")}>{value}</p>
     </div>
   );
 }

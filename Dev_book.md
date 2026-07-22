@@ -673,7 +673,62 @@ Accept currently does **insert at anchor + autosave** (persists the chapter). Th
 
 Nothing here is committed — all changes are in the working tree for you to review.
 
+**已在本次会话前就绪**
 
+- **后端 Agent**：[app/services/writing_agent.py](https://vscode-webview//0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/writing_agent.py) —— 完整的 LangGraph 状态图（`意图 → 检索 → 写作 → 护栏 →[有界修订]→ 修复 → 读者视角`），并配有启发式离线回退策略。
+- **SSE 端点**：[app/api.py:600](https://vscode-webview//0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/api.py#L600) 中的 `POST /draft/continue/stream`，以及 [app/schemas.py](https://vscode-webview//0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/schemas.py) 中的 `ContinuePayload`。
+- **API 客户端**：`api.streamContinue()` 以及 [web/lib/api.ts](https://vscode-webview//0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/api.ts) 和 [web/lib/types.ts](https://vscode-webview//0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/types.ts) 中的所有 TypeScript 类型（`ContinueStreamEvent`、`GhostCandidate`、`GhostStages`、`WritingDirective`）。
+
+**我已完成的前端交互工作**
+
+1. **[workspace-context.tsx](https://vscode-webview//0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/workspace-context.tsx) 中的工作区状态切片** —— 草稿锚点、流式状态、阶段、候选列表，以及 `startGhost`、`runContinue`、`acceptGhost`、`cancelGhost` 等方法；SSE 事件折叠至 HUD 状态、候选轮播、指令复用（使“微调/换一版”成为低成本增量调用）。切换章节时会重置草稿状态。
+2. **新的控制面板**：[continue-ghost-panel.tsx](https://vscode-webview//0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/continue-ghost-panel.tsx) —— 意图输入条（自由文本 + 6 个快捷标签），轻量 HUD（`意图 · 已参考设定·N · 一致性 · 生成中`），读者感受行，以及“落笔三选一”（采纳 / 微调 / 换一版），并带有候选轮播指示器 `‹ x/n ›`。
+3. **[editor-pane.tsx](https://vscode-webview//0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/editor-pane.tsx) 中的行内草稿渲染** —— 流式文本以深色斜体“草稿”样式显示在正文内光标位置（带有流式光标 ▍），同时支持键盘快捷键 `Tab`=采纳 / `Esc`=放弃。
+
+**已验证**
+
+- `tsc --noEmit` 检查通过；`langgraph` 导入和图编译均正常；`WritingAgent` 可实例化。
+- **端到端离线运行**：`意图 → 检索 → 21 个增量片段 → 护栏 → 读者视角` 正确触发，且“加一段对话”能解析为 `dialogue` 意图 —— 整个流程在无真实模型或数据库的情况下也能正常工作。
+
+**两个已由现有框架决定、无需再议的设计**
+
+- **采纳形态**：直接采纳行内草稿文本（端点返回 `result_text` + `GhostCandidate`，而非 `patch_set`）。润色（Polish）功能保持不变，仍使用它自己的补丁/差异流程。
+- **图替换 vs 并存**：两者共存——这是新增的 `/draft/continue/stream` 路由，与现有的 `/draft/continue` 并列。
+
+**一处诚实说明的遗漏**
+
+目前“采纳”仅做 **插入锚点 + 自动保存**（持久化章节）。提案中提到的“写 timeline / 更新风格样本 on accept”需要后端钩子，但这些不在当前修改范围内——我没有自行补造。如果你需要，自然的实现位置是在采纳时添加一个小型服务端步骤（或附着在章节保存上）。你说一声，我就去接上。
+
+> timeline / 更新风格样本 on accept”需要后端钩子,前端样式也需要优化。你是一个专业的懂创作懂读者的作家兼ai应用开发工程师，要创新且将功能落地。
+
+ **后端**
+
+- **[app/database.py](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/app/database.py)**：新增 `style_samples` 表（`init_db` 幂等，老库自动补）。
+
+- **[app/services/style_service.py](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/app/services/style_service.py)**：重构为**活画像·锚点加权**——
+
+  - 抽出 `_compute_metrics`；`build_profile` 现在也把手输样本落库（`source='manual'`）。
+  - 新增 `record_accepted_sample`：采纳文本入库→样本池 = 全部 manual 锚点 + 最近 20 条 accepted，manual 按需整体加权（≥ accepted 条数）防止文风漂向模型腔调→重算画像。碎样本（中文 <12 字）只入库不重算。
+  - `get_latest_profile` 叠加 `accepted_count`。
+
+- **[app/services/lore_service.py](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/app/services/lore_service.py)**：新增复用型 `add_timeline_event`。
+
+- **[app/api.py](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/app/api.py)** + **[app/schemas.py](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/app/schemas.py)**：新端点 `POST /draft/continue/accept`，写「续写落笔」事件（描述含 **意图 · 一致性分 · 正文首句**），并触发风格回流。空文本 → 400。
+
+  **前端**
+
+  - **[web/lib/api.ts](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/lib/api.ts)** / **[web/lib/types.ts](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/lib/types.ts)**：`acceptContinue` + `ContinueAcceptResponse` + `accepted_count`。
+  - **[workspace-context.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/workspace/workspace-context.tsx)**：`acceptGhost` 在插入+保存后 fire-and-forget 调钩子并失效 timeline/style 查询；失败静默，**不打断写作**。
+  - **[timeline-panel.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/workspace/timeline-panel.tsx)**：按 `source` 分类着色——续写落笔(主色/Sparkles)、章节更新(绿/FileEdit)、设定导入(琥珀/BookOpen)，圆点带图标、英文串换成中文徽章。
+  - **[style-panel.tsx](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/web/components/workspace/style-panel.tsx)**：露出「文风画像会从你采纳的续写中持续学习」提示 + 「采纳样本 · N 段」高亮卡片，让作者看见反馈闭环。
+
+  验证结果：init_db 建表成功、时间线事件写入并回读、`accepted_count` 递增、画像随采纳演化、碎样本正确跳过重算、空文本 400。
+
+  一个可选的后续增强（本次刻意没做，避免范围蔓延）：采纳样本目前用「条数窗口 + 锚点加权」，若日更量大、想更精细，可再加**相似度去重**或**时间衰减权重**。需要的话我可以接着做。
+
+  ------
+
+  小提示：本次编辑 `.py` 时 Edit 工具又触发了那个 UTF-8 BOM 问题（`lore_service.py`/`database.py` 被注入 BOM，已用 `py` 剥离并验证）。这条已在你的项目记忆里 [edit-tool-bom-gotcha.md](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/Users/LiruiZhang/.claude/projects/c--Data-code-novel-agent-novel-hub/memory/edit-tool-bom-gotcha.md)，符合预期
 
 ### skills开发
 

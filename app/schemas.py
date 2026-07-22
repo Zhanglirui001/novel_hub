@@ -72,6 +72,14 @@ class ContinuePayload(BaseModel):
     target_latency_ms: int = 6000
 
 
+class ContinueAcceptPayload(BaseModel):
+    project_id: int
+    chapter_title: str = "未命名章节"
+    accepted_text: str
+    directive: dict[str, Any] | None = None
+    consistency_score: int | None = None
+
+
 class PatchApplyPayload(BaseModel):
     patch_set_id: int
     accepted_ids: list[int]
