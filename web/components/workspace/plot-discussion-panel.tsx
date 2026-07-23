@@ -1,14 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { BookMarked, Loader2, PenLine, Send, Sparkles } from "lucide-react";
+import { BookMarked, Globe, Loader2, PenLine, Send, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
-import { useMainline, useSaveMainline } from "@/lib/queries";
+import { useGlobalMainline, useMainline, useSaveGlobalMainline, useSaveMainline } from "@/lib/queries";
 import type { MainlineDiscussionTurn } from "@/lib/types";
 import { useWorkspace } from "./workspace-context";
 
@@ -154,6 +154,8 @@ export function PlotDiscussionPanel() {
         </span>
       </div>
 
+      <GlobalMainlineSection projectId={projectId} />
+
       {noChapter ? (
         <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
           请先打开或新建一个章节，再讨论本章主线。
@@ -267,6 +269,88 @@ export function PlotDiscussionPanel() {
             </div>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// 全书主线：项目级、1 条生效。content 为完整大纲，summary 为「常驻注入」到每次生成的摘要。
+// 放在剧情页顶部，与下方「本章主线」形成「全书 → 本章」的分层结构。
+function GlobalMainlineSection({ projectId }: { projectId: number }) {
+  const { data: saved } = useGlobalMainline(projectId);
+  const saveGlobal = useSaveGlobalMainline(projectId);
+
+  const [open, setOpen] = React.useState(false);
+  const [content, setContent] = React.useState("");
+  const [summary, setSummary] = React.useState("");
+
+  React.useEffect(() => {
+    setContent(saved?.content ?? "");
+    setSummary(saved?.summary ?? "");
+  }, [saved?.content, saved?.summary]);
+
+  const save = () => {
+    if (!content.trim() && !summary.trim()) {
+      toast.error("请先填写全书主线");
+      return;
+    }
+    saveGlobal.mutate(
+      { content: content.trim(), summary: summary.trim() },
+      {
+        onSuccess: () => toast.success("全书主线已保存"),
+        onError: (e) => toast.error(e instanceof Error ? e.message : "保存失败"),
+      },
+    );
+  };
+
+  return (
+    <div className="space-y-2 rounded-md border bg-card/40 p-3">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2 text-xs font-medium"
+      >
+        <Globe className="h-3.5 w-3.5 text-primary" />
+        全书主线
+        {saved?.content && <span className="text-[0.65rem] font-normal text-success">已设置</span>}
+        <span className="ml-auto text-[0.65rem] font-normal text-muted-foreground">
+          {open ? "收起" : "展开"}
+        </span>
+      </button>
+
+      {open ? (
+        <div className="space-y-2 animate-fade-in">
+          <div className="space-y-1">
+            <p className="text-[0.7rem] text-muted-foreground">完整大纲（供你规划，不直接全文注入）</p>
+            <Textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="整部作品的核心矛盾、主要走向、结局方向……"
+              className="min-h-[5rem] resize-none text-xs"
+              rows={4}
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-[0.7rem] text-muted-foreground">
+              注入摘要（<span className="text-primary">常驻注入</span>到每次生成，留空则自动截取大纲开头）
+            </p>
+            <Textarea
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              placeholder="一两句话概括大方向，避免剧透式细节。"
+              className="min-h-[3rem] resize-none text-xs"
+              rows={2}
+            />
+          </div>
+          <Button size="sm" onClick={save} disabled={saveGlobal.isPending}>
+            {saveGlobal.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}
+            保存全书主线
+          </Button>
+        </div>
+      ) : (
+        <p className="line-clamp-2 text-[0.7rem] text-muted-foreground">
+          {saved?.summary || saved?.content || "尚未设置。设置后其摘要会常驻注入到每次续写/改写，把控全书大方向。"}
+        </p>
       )}
     </div>
   );

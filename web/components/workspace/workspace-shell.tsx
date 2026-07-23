@@ -7,38 +7,42 @@ import { ChevronLeft, Network, PanelLeft } from "lucide-react";
 import { ThemePicker } from "@/components/theme-picker";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProject } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { AssistantDock } from "./assistant-dock";
 import { ChapterRail } from "./chapter-rail";
 import { DailyCheckin } from "./daily-checkin";
-import { ChatPanel } from "./chat-panel";
+import { getDockTab } from "./dock-tabs";
 import { EditorPane } from "./editor-pane";
 import { useWorkspace } from "./workspace-context";
 
-const CHAT_FULLSCREEN_MIN_WIDTH = 640;
-const CHAT_FULLSCREEN_MAX_GAP = 24;
+const PANEL_FULLSCREEN_MIN_WIDTH = 640;
+const PANEL_FULLSCREEN_MAX_GAP = 24;
 
-function getChatFullscreenMaxWidth() {
-  return Math.max(CHAT_FULLSCREEN_MIN_WIDTH, window.innerWidth - CHAT_FULLSCREEN_MAX_GAP);
+function getPanelFullscreenMaxWidth() {
+  return Math.max(PANEL_FULLSCREEN_MIN_WIDTH, window.innerWidth - PANEL_FULLSCREEN_MAX_GAP);
 }
 
-function getChatFullscreenMinWidth() {
-  return Math.min(CHAT_FULLSCREEN_MIN_WIDTH, getChatFullscreenMaxWidth());
+function getPanelFullscreenMinWidth() {
+  return Math.min(PANEL_FULLSCREEN_MIN_WIDTH, getPanelFullscreenMaxWidth());
 }
 
-function clampChatFullscreenWidth(width: number) {
-  return Math.max(getChatFullscreenMinWidth(), Math.min(width, getChatFullscreenMaxWidth()));
+function clampPanelFullscreenWidth(width: number) {
+  return Math.max(getPanelFullscreenMinWidth(), Math.min(width, getPanelFullscreenMaxWidth()));
 }
 
 export function WorkspaceShell() {
-  const { projectId, chatFullscreenOpen, setChatFullscreenOpen } = useWorkspace();
+  const { projectId, fullscreenTab, setFullscreenTab } = useWorkspace();
   const { data: project, isLoading } = useProject(projectId);
   const [railOpen, setRailOpen] = React.useState(true);
-  const [chatFullscreenWidth, setChatFullscreenWidth] = React.useState<number | null>(null);
+  const [panelFullscreenWidth, setPanelFullscreenWidth] = React.useState<number | null>(null);
+  const fullscreenOpen = fullscreenTab !== null;
+  const fullscreenEntry = getDockTab(fullscreenTab);
+  const FullscreenPanel = fullscreenEntry?.Panel;
 
-  const startChatFullscreenResize = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+  const startPanelFullscreenResize = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
@@ -46,15 +50,15 @@ export function WorkspaceShell() {
     const handle = event.currentTarget;
     const pointerId = event.pointerId;
     const startX = event.clientX;
-    const dialog = handle.closest("[data-chat-fullscreen-dialog]") as HTMLElement | null;
-    const startWidth = dialog?.getBoundingClientRect().width ?? chatFullscreenWidth ?? getChatFullscreenMaxWidth();
+    const dialog = handle.closest("[data-panel-fullscreen-dialog]") as HTMLElement | null;
+    const startWidth = dialog?.getBoundingClientRect().width ?? panelFullscreenWidth ?? getPanelFullscreenMaxWidth();
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
     document.body.style.cursor = "ew-resize";
     document.body.style.userSelect = "none";
 
     function onPointerMove(moveEvent: PointerEvent) {
-      setChatFullscreenWidth(clampChatFullscreenWidth(startWidth + startX - moveEvent.clientX));
+      setPanelFullscreenWidth(clampPanelFullscreenWidth(startWidth + startX - moveEvent.clientX));
     }
 
     function stopResize() {
@@ -75,18 +79,18 @@ export function WorkspaceShell() {
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", stopResize);
     window.addEventListener("pointercancel", stopResize);
-  }, [chatFullscreenWidth]);
+  }, [panelFullscreenWidth]);
 
   React.useEffect(() => {
-    if (!chatFullscreenOpen || chatFullscreenWidth === null) return;
+    if (!fullscreenOpen || panelFullscreenWidth === null) return;
 
     function onResize() {
-      setChatFullscreenWidth((width) => (width === null ? width : clampChatFullscreenWidth(width)));
+      setPanelFullscreenWidth((width) => (width === null ? width : clampPanelFullscreenWidth(width)));
     }
 
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [chatFullscreenOpen, chatFullscreenWidth]);
+  }, [fullscreenOpen, panelFullscreenWidth]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -152,33 +156,45 @@ export function WorkspaceShell() {
         </aside>
       </div>
 
-      <Dialog open={chatFullscreenOpen} onOpenChange={setChatFullscreenOpen}>
+      <Dialog open={fullscreenOpen} onOpenChange={(open) => !open && setFullscreenTab(null)}>
         <DialogContent
-          data-chat-fullscreen-dialog
+          data-panel-fullscreen-dialog
           className="fixed left-auto right-0 top-0 h-screen w-[96vw] max-w-none translate-x-0 translate-y-0 rounded-none border-l p-0 sm:rounded-none md:w-[88vw] lg:w-[82vw]"
-          style={chatFullscreenWidth === null ? undefined : { width: `${chatFullscreenWidth}px` }}
+          style={panelFullscreenWidth === null ? undefined : { width: `${panelFullscreenWidth}px` }}
         >
           <div
-            data-chat-resize-handle
+            data-panel-resize-handle
             role="separator"
             aria-orientation="vertical"
-            aria-label="从左边缘拖拽调整聊天面板宽度"
+            aria-label="从左边缘拖拽调整面板宽度"
             className="group absolute inset-y-16 left-0 z-20 w-6 cursor-ew-resize touch-none"
-            onPointerDown={startChatFullscreenResize}
-            onDoubleClick={() => setChatFullscreenWidth(null)}
+            onPointerDown={startPanelFullscreenResize}
+            onDoubleClick={() => setPanelFullscreenWidth(null)}
           >
             <div className="absolute left-0 top-0 h-full w-1 bg-border transition-colors group-hover:bg-primary group-active:bg-primary" />
             <div className="absolute left-1 top-1/2 h-12 w-2 -translate-y-1/2 rounded-full bg-border/80 transition-colors group-hover:bg-primary group-active:bg-primary" />
           </div>
           <div className="flex h-full min-h-0 flex-col pl-5">
             <DialogHeader className="border-b px-6 py-4 pr-12 text-left">
-              <DialogTitle>AI 聊天</DialogTitle>
+              <DialogTitle>{fullscreenEntry?.label ?? "面板"}</DialogTitle>
               <DialogDescription>
-                围绕当前章节、选中文字和正文内容进行讨论。
+                {fullscreenTab === "chat"
+                  ? "围绕当前章节、选中文字和正文内容进行讨论。"
+                  : `全屏展开「${fullscreenEntry?.label ?? ""}」，空间更充裕。可从左边缘拖拽调整宽度。`}
               </DialogDescription>
             </DialogHeader>
             <div className="min-h-0 flex-1">
-              <ChatPanel fullscreen />
+              {FullscreenPanel ? (
+                fullscreenTab === "chat" ? (
+                  <FullscreenPanel fullscreen />
+                ) : (
+                  <ScrollArea className="h-full soft-scroll">
+                    <div className="mx-auto max-w-3xl px-6 py-5">
+                      <FullscreenPanel />
+                    </div>
+                  </ScrollArea>
+                )
+              ) : null}
             </div>
           </div>
         </DialogContent>

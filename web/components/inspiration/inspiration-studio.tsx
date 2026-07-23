@@ -14,10 +14,12 @@ import {
   useCreateInspirationBoard,
   useCreateInspirationCard,
   useDeleteInspirationCard,
+  useGlobalMainline,
   useInspirationBoard,
   useInspirationBoards,
   useInspirationCards,
   usePatchInspirationGraph,
+  useSaveGlobalMainline,
   useUpdateInspirationCard,
 } from "@/lib/queries";
 import type { InspirationBoardEdge, InspirationBoardGraph, InspirationBoardNode, InspirationCard, InspirationCardPayload, InspirationProposal, InspirationViewport } from "@/lib/types";
@@ -66,6 +68,24 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
   const updateCard = useUpdateInspirationCard(projectId);
   const deleteCard = useDeleteInspirationCard(projectId);
   const patchGraph = usePatchInspirationGraph(projectId, boardId);
+  const globalMainlineQuery = useGlobalMainline(projectId);
+  const saveGlobalMainline = useSaveGlobalMainline(projectId);
+
+  // 把灵感卡片「提升为」全书主线：追加到现有全书主线大纲末尾。
+  const sendCardToGlobalMainline = useCallback(
+    async (card: InspirationCard) => {
+      const snippet = `【${card.title}】${card.content ? `\n${card.content}` : ""}`.trim();
+      const existing = (globalMainlineQuery.data?.content ?? "").trim();
+      const next = existing ? `${existing}\n\n${snippet}` : snippet;
+      try {
+        await saveGlobalMainline.mutateAsync({ content: next, summary: globalMainlineQuery.data?.summary ?? "" });
+        setNotice(`已把「${card.title}」加入全书主线`);
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "加入全书主线失败");
+      }
+    },
+    [globalMainlineQuery.data, saveGlobalMainline],
+  );
 
   const cards = cardsQuery.data || [];
   const boards = boardsQuery.data || [];
@@ -277,7 +297,7 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
 
         <aside className="flex min-h-0 flex-col border-l border-zinc-200 bg-white">
           <div className="border-b border-zinc-200 p-3"><p className="text-sm font-semibold">检查器与讨论</p><p className="mt-1 text-xs text-zinc-500">选中卡片后，AI 会获得当前节点和关系上下文。</p></div>
-          {selectedCard ? <div className="border-b border-zinc-200 p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-xs text-teal-700">{selectedCard.card_type}</p><p className="mt-1 text-sm font-medium">{selectedCard.title}</p></div><Button size="icon" variant="ghost" aria-label="编辑卡片" onClick={() => openEditCard(selectedCard)}><FilePlus2 className="size-4" /></Button></div><p className="mt-2 line-clamp-4 whitespace-pre-wrap text-xs leading-5 text-zinc-600">{selectedCard.content}</p></div> : null}
+          {selectedCard ? <div className="border-b border-zinc-200 p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-xs text-teal-700">{selectedCard.card_type}</p><p className="mt-1 text-sm font-medium">{selectedCard.title}</p></div><Button size="icon" variant="ghost" aria-label="编辑卡片" onClick={() => openEditCard(selectedCard)}><FilePlus2 className="size-4" /></Button></div><p className="mt-2 line-clamp-4 whitespace-pre-wrap text-xs leading-5 text-zinc-600">{selectedCard.content}</p><Button size="sm" variant="outline" className="mt-2 w-full" disabled={saveGlobalMainline.isPending} onClick={() => sendCardToGlobalMainline(selectedCard)}><Network className="mr-1 size-3.5" />发送到全书主线</Button></div> : null}
           <ScrollArea className="min-h-0 flex-1">
             <div className="space-y-3 p-3">
               {messages.length ? messages.map((message, index) => <div key={`${message.role}-${index}`} className={`whitespace-pre-wrap border p-3 text-xs leading-5 ${message.role === "user" ? "border-teal-200 bg-teal-50 text-teal-950" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>{message.content || <Loader2 className="size-3 animate-spin" />}</div>) : <div className="border border-dashed border-zinc-300 p-4 text-xs leading-5 text-zinc-500"><Sparkles className="mb-2 size-4 text-teal-700" />从冲突、转折、人物动机或伏笔开始讨论。选择画板节点可让讨论聚焦。</div>}

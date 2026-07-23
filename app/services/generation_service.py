@@ -6,6 +6,7 @@ import time
 from app.database import get_conn, utc_now
 from app.services.consistency_guard import ConsistencyGuard
 from app.services.lore_service import LoreService
+from app.services.mainline_service import MainlineService
 from app.services.modeling import ModelRouter, build_model_client
 from app.services.patch_service import PatchService
 from app.services.style_service import StyleService
@@ -14,6 +15,7 @@ from app.services.style_service import StyleService
 class GenerationService:
     def __init__(self) -> None:
         self.lore_service = LoreService()
+        self.mainline_service = MainlineService()
         self.style_service = StyleService()
         self.guard = ConsistencyGuard()
         self.patch_service = PatchService()
@@ -34,6 +36,7 @@ class GenerationService:
         target_latency_ms: int = 6000,
     ) -> dict:
         context = self.lore_service.build_context(project_id)
+        context["global_mainline"] = self.mainline_service.get_global_summary(project_id)
         style = self.style_service.get_latest_profile(project_id)
         route = self.router.choose(task_type, len(input_text), budget, target_latency_ms)
 
@@ -91,6 +94,7 @@ class GenerationService:
         chapter_title: str = "未命名章节",
     ) -> dict:
         context = self.lore_service.build_context(project_id)
+        context["global_mainline"] = self.mainline_service.get_global_summary(project_id)
         style = self.style_service.get_latest_profile(project_id)
         prompt = self._compose_analyze_prompt(selection, prefix, suffix, context, style)
         self._log_model_run(project_id, None, "analyze", "judge", "judge-balanced", prompt)
@@ -120,6 +124,7 @@ class GenerationService:
         target_latency_ms: int = 6000,
     ) -> dict:
         context = self.lore_service.build_context(project_id)
+        context["global_mainline"] = self.mainline_service.get_global_summary(project_id)
         style = self.style_service.get_latest_profile(project_id)
         route = self.router.choose("polish", len(selection), budget, target_latency_ms)
 
@@ -241,12 +246,14 @@ class GenerationService:
     def _compose_writer_prompt(self, task_type: str, input_text: str, context: dict, style: dict) -> str:
         world = "; ".join(i["name"] for i in context.get("world_rules", [])[:5])
         terms = "; ".join(i["name"] for i in context.get("terms", [])[:8])
+        mainline = context.get("global_mainline", "")
         return (
             f"task={task_type}\n"
             f"style={json.dumps(style, ensure_ascii=False)}\n"
             f"world={world}\n"
             f"terms={terms}\n"
-            f"text={input_text}"
+            + (f"全书主线（大方向，勿剧透/勿透支）={mainline}\n" if mainline else "")
+            + f"text={input_text}"
         )
 
     def _compose_analyze_prompt(
@@ -255,6 +262,7 @@ class GenerationService:
         world = "; ".join(i["name"] for i in context.get("world_rules", [])[:5])
         terms = "; ".join(i["name"] for i in context.get("terms", [])[:8])
         taboos = "; ".join(i["name"] for i in context.get("taboos", [])[:5])
+        mainline = context.get("global_mainline", "")
         return (
             "你是小说编辑。请只对【选段】给出分析,前后文仅供理解上下文,不要重写。\n"
             "分析维度:1) 一致性(是否违背设定/术语/禁忌) 2) 人设与动机 3) 节奏与张力 4) 用词与文风。\n"
@@ -263,7 +271,8 @@ class GenerationService:
             f"world={world}\n"
             f"terms={terms}\n"
             f"taboos={taboos}\n"
-            f"前文={prefix}\n"
+            + (f"全书主线={mainline}\n" if mainline else "")
+            + f"前文={prefix}\n"
             f"【选段】={selection}\n"
             f"后文={suffix}"
         )
@@ -281,6 +290,7 @@ class GenerationService:
         world = "; ".join(i["name"] for i in context.get("world_rules", [])[:5])
         terms = "; ".join(i["name"] for i in context.get("terms", [])[:8])
         taboos = "; ".join(i["name"] for i in context.get("taboos", [])[:5])
+        mainline = context.get("global_mainline", "")
         return (
             "你是小说写作助手。请只重写【选段】,使其衔接前后文且满足下方批注与分析建议。\n"
             "硬要求:不要输出前后文,不要加引号或解释,直接给出修改后的选段正文。\n"
@@ -289,7 +299,8 @@ class GenerationService:
             f"world={world}\n"
             f"terms={terms}\n"
             f"taboos={taboos}\n"
-            f"前文={prefix}\n"
+            + (f"全书主线（大方向，不要偏离）={mainline}\n" if mainline else "")
+            + f"前文={prefix}\n"
             f"【原选段】={selection}\n"
             f"后文={suffix}\n"
             f"分析={analysis or '(无)'}\n"

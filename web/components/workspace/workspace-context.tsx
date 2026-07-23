@@ -112,7 +112,7 @@ interface WorkspaceState {
   activeGhostId: string | null;
   ghostLiveText: string;
   startGhost: () => void;
-  runContinue: (instruction: string, opts?: { directive?: WritingDirective | null; mainline?: string }) => void;
+  runContinue: (instruction: string, opts?: { directive?: WritingDirective | null; mainline?: string; useGlobalMainline?: boolean }) => void;
   setActiveGhost: (id: string) => void;
   acceptGhost: () => void;
   cancelGhost: () => void;
@@ -124,6 +124,9 @@ interface WorkspaceState {
   setChatDraft: (v: string) => void;
   chatFullscreenOpen: boolean;
   setChatFullscreenOpen: (v: boolean) => void;
+  /** 当前全屏的功能面板 tab（null 表示未全屏）。通用于所有 dock 面板。 */
+  fullscreenTab: string | null;
+  setFullscreenTab: (v: string | null) => void;
   createChatSession: (title?: string) => number;
   selectChatSession: (id: number) => void;
   sendChatMessage: (content: string) => void;
@@ -199,7 +202,13 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
   const [activeGhostId, setActiveGhostId] = React.useState<string | null>(null);
   const [ghostLiveText, setGhostLiveText] = React.useState("");
   const [chatDraft, setChatDraft] = React.useState("");
-  const [chatFullscreenOpen, setChatFullscreenOpen] = React.useState(false);
+  // 通用面板全屏：记录当前全屏的 tab。聊天的开关是它的一个特例（tab === "chat"）。
+  const [fullscreenTab, setFullscreenTab] = React.useState<string | null>(null);
+  const chatFullscreenOpen = fullscreenTab === "chat";
+  const setChatFullscreenOpen = React.useCallback(
+    (v: boolean) => setFullscreenTab(v ? "chat" : null),
+    [],
+  );
   const [activeChatSessionId, setActiveChatSessionId] = React.useState<number | null>(null);
   const [chatStreaming, setChatStreaming] = React.useState(false);
   const [streamingContent, setStreamingContent] = React.useState("");
@@ -536,11 +545,15 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
   }, []);
 
   const runContinue = React.useCallback(
-    (instruction: string, opts?: { directive?: WritingDirective | null; mainline?: string }) => {
+    (
+      instruction: string,
+      opts?: { directive?: WritingDirective | null; mainline?: string; useGlobalMainline?: boolean },
+    ) => {
       const anchor = ghostAnchorRef.current;
       if (anchor == null || ghostStreamingRef.current) return;
 
       const mainline = (opts?.mainline ?? "").trim();
+      const useGlobalMainline = opts?.useGlobalMainline ?? true;
 
       // 解析续写素材：光标前有正文 → 段中续写；空章节 → 起笔，承接上一章结尾。
       const resolveSource = async (): Promise<{ tail: string; mode: "continue" | "opening" } | null> => {
@@ -602,6 +615,7 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
                 target_latency_ms: 6000,
                 mode: source.mode,
                 mainline,
+                use_global_mainline: useGlobalMainline,
               },
               {
                 signal: controller.signal,
@@ -774,6 +788,8 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
     setChatDraft,
     chatFullscreenOpen,
     setChatFullscreenOpen,
+    fullscreenTab,
+    setFullscreenTab,
     createChatSession,
     selectChatSession,
     sendChatMessage,

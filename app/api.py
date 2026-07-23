@@ -36,6 +36,7 @@ from app.schemas import (
     LoreImportPayload,
     MainlineDiscussionPayload,
     MainlineSavePayload,
+    GlobalMainlineSavePayload,
     PatchApplyPayload,
     ProjectCreate,
     StyleProfilePayload,
@@ -261,6 +262,16 @@ def stream_mainline_discussion(project_id: int, chapter_id: int, payload: Mainli
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/projects/{project_id}/mainline")
+def get_global_mainline(project_id: int):
+    return mainline_service.get_global_mainline(project_id) or {}
+
+
+@app.put("/projects/{project_id}/mainline")
+def save_global_mainline(project_id: int, payload: GlobalMainlineSavePayload):
+    return mainline_service.save_global_mainline(project_id, payload.content, payload.summary)
 
 
 @app.get("/projects/{project_id}/chapters")
@@ -607,6 +618,16 @@ def get_lore(project_id: int):
     return lore_service.build_context(project_id)
 
 
+@app.delete("/projects/{project_id}/lore/items/{item_id}")
+def delete_lore_item(project_id: int, item_id: int):
+    return lore_service.delete_lore_item(project_id, item_id)
+
+
+@app.delete("/projects/{project_id}/characters/{character_id}")
+def delete_character(project_id: int, character_id: int):
+    return lore_service.delete_character(project_id, character_id)
+
+
 @app.post("/style/profile")
 def create_style_profile(payload: StyleProfilePayload):
     metrics = style_service.build_profile(payload.project_id, payload.name, payload.samples)
@@ -632,6 +653,12 @@ def continue_draft(payload: DraftPayload):
 
 @app.post("/draft/continue/stream")
 def continue_draft_stream(payload: ContinuePayload):
+    # 全书主线摘要：常驻注入，除非前端关闭「参考全书主线」开关。
+    global_mainline = (
+        mainline_service.get_global_summary(payload.project_id)
+        if payload.use_global_mainline
+        else ""
+    )
     events = writing_agent.stream_continue(
         project_id=payload.project_id,
         tail_text=payload.tail_text,
@@ -641,6 +668,7 @@ def continue_draft_stream(payload: ContinuePayload):
         target_latency_ms=payload.target_latency_ms,
         mode=payload.mode,
         mainline=payload.mainline,
+        global_mainline=global_mainline,
     )
 
     def event_stream():

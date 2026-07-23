@@ -76,6 +76,72 @@ class MainlineService:
             "updated_at": now,
         }
 
+    # ---- 全局主线（项目级，1 条生效） -------------------------------------
+
+    _SUMMARY_FALLBACK_LIMIT = 200
+
+    def get_global_mainline(self, project_id: int) -> Optional[dict]:
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+                SELECT id, project_id, content, summary, status, updated_at
+                FROM project_mainlines
+                WHERE project_id = %s
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 1
+                """,
+                (project_id,),
+            )
+            return c.fetchone()
+
+    def save_global_mainline(self, project_id: int, content: str, summary: str = "") -> dict:
+        """按 project_id upsert 全局主线。summary 为空时用 content 截断兜底。"""
+        text = (content or "").strip()
+        summary_text = (summary or "").strip() or text[: self._SUMMARY_FALLBACK_LIMIT]
+        now = utc_now()
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT id FROM project_mainlines WHERE project_id = %s ORDER BY id ASC LIMIT 1",
+                (project_id,),
+            )
+            row = c.fetchone()
+            if row:
+                mainline_id = row["id"]
+                c.execute(
+                    """
+                    UPDATE project_mainlines
+                    SET content = %s, summary = %s, status = 'confirmed', updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (text, summary_text, now, mainline_id),
+                )
+            else:
+                c.execute(
+                    """
+                    INSERT INTO project_mainlines (project_id, content, summary, status, updated_at)
+                    VALUES (%s, %s, %s, 'confirmed', %s)
+                    """,
+                    (project_id, text, summary_text, now),
+                )
+                mainline_id = c.lastrowid
+        return {
+            "id": mainline_id,
+            "project_id": project_id,
+            "content": text,
+            "summary": summary_text,
+            "status": "confirmed",
+            "updated_at": now,
+        }
+
+    def get_global_summary(self, project_id: int) -> str:
+        """取全局主线的常驻注入摘要（无则空串）。供续写/生成 prompt 注入。"""
+        row = self.get_global_mainline(project_id)
+        if not row:
+            return ""
+        return (row.get("summary") or row.get("content") or "").strip()
+
     # ---- 讨论 --------------------------------------------------------------
 
     def _prev_chapter_tail(self, project_id: int, chapter_id: int, limit: int = 1200) -> str:

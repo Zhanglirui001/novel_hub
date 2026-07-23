@@ -220,6 +220,8 @@ export interface ContinueRequest {
   target_latency_ms: number;
   mode?: "continue" | "opening";
   mainline?: string;
+  /** 是否注入全书主线摘要（常驻，可关）。默认 true。 */
+  use_global_mainline?: boolean;
 }
 
 /** 续写流式事件（对应后端 writing_agent 的 custom stream）。 */
@@ -554,6 +556,16 @@ export interface ChapterMainline {
   project_id: number;
   chapter_id: number;
   content: string;
+  status: string;
+  updated_at: string;
+}
+
+/** 项目级全书主线（1 条生效）。content 为完整大纲，summary 为常驻注入摘要。 */
+export interface GlobalMainline {
+  id: number;
+  project_id: number;
+  content: string;
+  summary: string;
   status: string;
   updated_at: string;
 }

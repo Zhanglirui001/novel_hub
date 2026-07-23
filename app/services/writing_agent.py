@@ -56,6 +56,7 @@ class WritingState(TypedDict, total=False):
     instruction: str
     mode: str  # continue（段中续写）| opening（新章起笔）
     mainline: str  # 本章故事主线，按需引用
+    global_mainline: str  # 全书主线摘要，常驻注入（可关）
     directive: dict
     context: dict
     style: dict
@@ -115,6 +116,7 @@ class WritingAgent:
         target_latency_ms: int = 6000,
         mode: str = "continue",
         mainline: str = "",
+        global_mainline: str = "",
     ) -> Iterator[dict]:
         """驱动图并逐事件产出。事件形态：
 
@@ -138,6 +140,7 @@ class WritingAgent:
             "instruction": (instruction or "").strip(),
             "mode": mode if mode in ("continue", "opening") else "continue",
             "mainline": (mainline or "").strip(),
+            "global_mainline": (global_mainline or "").strip(),
             "directive": directive or {},
             "context": context,
             "style": style,
@@ -402,6 +405,7 @@ class WritingAgent:
         threads = "、".join(self._open_threads(context)) or "（无）"
         tail = state.get("tail_text", "")[-600:]
         mainline = state.get("mainline", "")
+        global_mainline = state.get("global_mainline", "")
         opening = state.get("mode") == "opening"
         head = (
             "你是小说责编，请把作者对新章节开篇的要求解析为结构化写作指令，只输出 JSON，不要解释。\n"
@@ -415,6 +419,7 @@ class WritingAgent:
             "beat(本段要达成的目标，一句话)、emotion(情绪基调)、pov_lock(视角)、"
             "approx_length(建议字数,整数)、must_include(数组)、must_avoid(数组)、open_threads(数组)。\n\n"
             f"作者要求：{state.get('instruction', '') or ('（未指定，自然开启新章）' if opening else '（未指定，顺着往下写）')}\n"
+            f"全书主线：{global_mainline or '（无）'}\n"
             f"本章主线：{mainline or '（无）'}\n"
             f"术语表：{terms or '（无）'}\n"
             f"禁忌：{taboos or '（无）'}\n"
@@ -427,6 +432,7 @@ class WritingAgent:
         style = state.get("style", {})
         picked = state.get("picked", {})
         mainline = state.get("mainline", "")
+        global_mainline = state.get("global_mainline", "")
         opening = state.get("mode") == "opening"
 
         if opening:
@@ -455,6 +461,8 @@ class WritingAgent:
             f"必须避免：{('、'.join(directive.get('must_avoid', [])) or '（无）')}\n"
             f"可回收伏笔：{('、'.join(directive.get('open_threads', [])) or '（无）')}"
         )
+        if global_mainline:
+            system += f"\n全书主线（大方向，勿剧透/勿提前透支）：{global_mainline}"
         if mainline:
             system += f"\n本章主线（务必据此推进，不要提前透支或偏离）：{mainline}"
 

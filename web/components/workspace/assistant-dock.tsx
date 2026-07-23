@@ -1,34 +1,15 @@
 "use client";
 
-import { FileText, Layers, PenLine, ScrollText, ShieldCheck, Clock, Files, MessageSquare, Drama } from "lucide-react";
+import { Expand } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChatPanel } from "./chat-panel";
-import { ConsistencyPanel } from "./consistency-panel";
-import { GenerationPanel } from "./generation-panel";
-import { InlineRevisePanel } from "./inline-revise-panel";
-import { LorePanel } from "./lore-panel";
-import { PatchReview } from "./patch-review";
-import { PlotDiscussionPanel } from "./plot-discussion-panel";
-import { StylePanel } from "./style-panel";
-import { TimelinePanel } from "./timeline-panel";
+import { DOCK_TABS } from "./dock-tabs";
 import { useWorkspace } from "./workspace-context";
 
-const tabs = [
-  { value: "chat", label: "聊天", icon: MessageSquare, Panel: ChatPanel },
-  { value: "create", label: "创作", icon: PenLine, Panel: GenerationPanel },
-  { value: "plot", label: "剧情", icon: Drama, Panel: PlotDiscussionPanel },
-  { value: "revise", label: "版本", icon: Files, Panel: InlineRevisePanel },
-  { value: "consistency", label: "一致性", icon: ShieldCheck, Panel: ConsistencyPanel },
-  { value: "patch", label: "修改", icon: Layers, Panel: PatchReview },
-  { value: "lore", label: "设定", icon: ScrollText, Panel: LorePanel },
-  { value: "style", label: "文风", icon: FileText, Panel: StylePanel },
-  { value: "timeline", label: "时间线", icon: Clock, Panel: TimelinePanel },
-];
-
 export function AssistantDock() {
-  const { dockTab, setDockTab } = useWorkspace();
+  const { dockTab, setDockTab, setFullscreenTab } = useWorkspace();
 
   return (
     <Tabs
@@ -36,9 +17,9 @@ export function AssistantDock() {
       onValueChange={setDockTab}
       className="flex h-full flex-col"
     >
-      <div className="border-b p-3">
-        <TabsList className="grid h-auto w-full grid-cols-4">
-          {tabs.map(({ value, label, icon: Icon }) => (
+      <div className="flex items-start gap-2 border-b p-3">
+        <TabsList className="grid h-auto flex-1 grid-cols-4">
+          {DOCK_TABS.map(({ value, label, icon: Icon }) => (
             <TabsTrigger
               key={value}
               value={value}
@@ -49,11 +30,21 @@ export function AssistantDock() {
             </TabsTrigger>
           ))}
         </TabsList>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="mt-0.5 h-8 w-8 shrink-0"
+          onClick={() => setFullscreenTab(dockTab)}
+          aria-label="全屏展开当前面板"
+          title="全屏展开当前面板"
+        >
+          <Expand className="h-4 w-4" />
+        </Button>
       </div>
 
       <ScrollArea className="flex-1 soft-scroll">
         <div className="p-4">
-          {tabs.map(({ value, Panel }) => (
+          {DOCK_TABS.map(({ value, Panel }) => (
             <TabsContent key={value} value={value} className="mt-0">
               <Panel />
             </TabsContent>

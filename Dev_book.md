@@ -730,6 +730,136 @@ Nothing here is committed — all changes are in the working tree for you to rev
 
   小提示：本次编辑 `.py` 时 Edit 工具又触发了那个 UTF-8 BOM 问题（`lore_service.py`/`database.py` 被注入 BOM，已用 `py` 剥离并验证）。这条已在你的项目记忆里 [edit-tool-bom-gotcha.md](vscode-webview://0tdcdvg07nkenrvfb284e6lhb27ip7c8l2qle0k5j8i0an5g3bng/Users/LiruiZhang/.claude/projects/c--Data-code-novel-agent-novel-hub/memory/edit-tool-bom-gotcha.md)，符合预期
 
+> 当前新开一个章节，但只有续写功能，新章节就不能参考一下故事线或者上章节的内容，从头开始写吗？
+
+你的判断是对的——**目前新开的空章节确实无法续写**，而且不会参考前一章或故事线。
+
+原因在于续写用到两类上下文：
+
+1. `tail_text`（光标前的正文）
+
+    
+
+   — 只取
+
+   当前打开的这一章
+
+   的内容 (
+
+   workspace-context.tsx:541-545
+
+   )：
+
+   
+
+   ```ts
+   const tail = draftRef.current.slice(0, anchor);
+   if (!tail.trim()) {
+     toast.error("光标前没有正文可续写");  // ← 空章节在这里被拦下
+     return;
+   }
+   ```
+
+2. **后端上下文** — `build_context()` 会取**角色卡、世界观设定、故事线（timeline_events）、伏笔**，加进写作提示里 ([writing_agent.py:124-146](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/writing_agent.py#L124-L146))。
+
+**关键问题**：新章节 `tail_text` 为空 → 前端直接拦截，后端根本不会被调用。而且**没有任何逻辑去读取上一章的正文**，章节之间只靠 `project_id` + `sort_order` 排序，内容互不关联。故事线虽然后端一直在传，但它只是 `tail_text` 的「补充」，不是「替代」，所以空章节时用不上。
+
+## 结论
+
+「新章开头参考故事线/上章来起笔」——**当前实现做不到**。续写被设计成「已有正文的延续」专用。
+
+## 可选的改法
+
+1. **自动把上一章末尾灌入 `tail_text`** — 空章节时按 `sort_order` 取前一章末尾若干字作为种子，改动最小，效果是「自然承接上章」。
+2. **新增「起笔」模式** — `tail_text` 为空也能生成章节开头，靠故事线＋伏笔＋角色。后端本身已容许空 `tail_text`，主要改前端拦截 + 提示词分支。
+3. **两者结合** — 传上章末尾，同时按「新章开头」来生成，读感最自然（我推荐这个）。
+
+你想往哪个方向做？定了我就出实现方案。
+
+> 采用两者结合的方案落地吧，同时希望增加一个剧情讨论模式，可以在生成前将故事主线确认下来。然后依据确认好的故事主线作为推进情节发展的参考。
+
+两个功能都已用真实数据库和真实 API 端到端验证通过。
+
+**功能A：起笔模式（新章承接上一章）**
+
+**后端**
+
+- `ContinuePayload` 新增 `mode` / `mainline` 字段
+- `writing_agent`：`WritingState`、`stream_continue`、提示词组装（`_compose_intent_prompt` / `_compose_write_messages` / `_heuristic_write`）都加了 `opening` 分支。起笔时改为「承接上一章结尾、避免复述」
+
+**前端**
+
+- 空章节时 `runContinue` 会**自动取上一章末尾（约1600字）**，以 `mode=opening` 生成（用章节缓存 + `getChapter`，按 `(group_title, sort_order, id)` 排序定位前一章）
+- 续写面板的触发按钮在空章时文案切换为「起笔（承接上章）」
+
+**功能B：剧情讨论模式 + 章节级主线（仅按需引用）**
+
+**后端**
+
+- 新增 `chapter_mainlines` 表、`MainlineService`（读/存/讨论流）、3 个端点
+- 讨论时注入故事线、角色、术语、上一章结尾作为素材
+
+**前端**
+
+- 助手 Dock 新增「**剧情**」标签（`PlotDiscussionPanel`）：讨论 →「整理为主线」→ 编辑 →「确认主线」保存 →「据此起笔/续写」直接生成
+- 续写面板新增「参考本章主线」开关（仅在该章有已确认主线时出现，默认开）
+- **主线不进 `build_context`，只在生成时随请求显式传入** → 实现「仅按需引用」
+
+**验证结果**
+
+- `tsc --noEmit` 全项目无报错 ✅
+- 真实数据库：`init_db`（建新表）✅、主线 PUT→GET ✅、讨论 SSE ✅、`mode=opening` 续写流（stage→delta→done，426 字，无错误）✅
+- 测试数据已清理
+
+> 右侧的功能栏中只有聊天支持全屏功能吗？其他功能也提供和聊天功能相同的全屏功能。另外能不能优化一下设定导入功能的ui；以及如何协调管理设定、灵感画板中的主线、全局主线、章节主线的提示词注入和结构管理（做到前端UI用户友好）
+
+**1. 通用全屏（所有面板都能全屏）**
+
+- 抽出共享注册表 [dock-tabs.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/dock-tabs.tsx)，dock 与全屏容器共用。
+- context 里把 `chatFullscreenOpen` 泛化成 `fullscreenTab`（聊天成为它的一个特例，旧的 `setChatFullscreenOpen` 保留兼容）：[workspace-context.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/workspace-context.tsx)。
+- [assistant-dock.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/assistant-dock.tsx) 顶部加了通用「全屏」按钮，对当前面板生效。
+- [workspace-shell.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/workspace-shell.tsx) 的 Dialog 改为按 `fullscreenTab` 查表渲染任意面板，复用了原有的左缘拖拽调宽/双击复位逻辑。
+
+**2. 设定导入 UI**
+
+[lore-panel.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/lore-panel.tsx) 重写：**表单录入**（角色/世界规则/术语/禁忌/时间线，行式增删、术语可标「必检★」）+ **JSON 高级模式**（兼容旧用法、补上原先写死的时间线导入）+ **已有条目可删除**。配套后端新增删除端点与 id 返回：[lore_service.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/lore_service.py)、[api.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/api.py)、前端 [api.ts](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/api.ts)/[queries.ts](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/queries.ts)。
+
+**3. 主线体系 + 分层注入协调**
+
+- **数据/服务/API**：新增 `project_mainlines` 表 [database.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/database.py)，`get/save_global_mainline` + `get_global_summary` [mainline_service.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/mainline_service.py)，`GET/PUT /projects/{id}/mainline`。
+
+- 分层注入
+
+  （保留「主线不进 build_context」原则）：
+
+  - 设定 = 常驻（不变）
+  - 全书主线**摘要** = 常驻，可关。续写路径由端点取 summary 注入 [writing_agent.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/writing_agent.py)/[api.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/api.py)；改写/分析路径 [generation_service.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/generation_service.py)。顺序为「全书主线 → 本章主线」。
+  - 本章主线 = 按需（不变）
+
+- 前端 UI
+
+  ：
+
+  - [plot-discussion-panel.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/plot-discussion-panel.tsx) 顶部新增「全书主线」编辑区（大纲 + 常驻注入摘要），与下方「本章主线」形成全书→本章分层。
+  - [continue-ghost-panel.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/continue-ghost-panel.tsx) 新增**注入状态面板**：设定（常驻只读）/ 全书主线摘要（开关）/ 本章主线（开关），一眼看清并控制这次续写喂了哪些层。
+  - [inspiration-studio.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/inspiration/inspiration-studio.tsx) 选中卡片新增「发送到全书主线」，打通画板→主线。
+
+**验证**
+
+- 后端 `pytest`：**18 passed**（含新增 [test_mainline_injection.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/tests/test_mainline_injection.py) 3 项，覆盖分层注入顺序与开关）。
+- 前端 `tsc --noEmit`：**无错误**。
+- 一处环境限制：`next lint` 在本机 npm 下有个已知的参数 bug（把 `lint` 当目录），没能跑成 lint；类型检查已过，我也确认了改动文件无悬空导入。
+
+一个我替你定的默认：全书主线摘要开关**默认开启**（符合你选的「常驻但摘要」）；用户可在续写面板随时关掉。若你想让它默认关、或把「发送到全书主线」也加一个「设为本章主线」的变体，我可以再补。
+
+建议启动实机走查：`cd web && npm run dev`（README 用 3001 端口），逐个面板点全屏、试设定表单导入+删除、在剧情页存全书主线后开关注入开关续写。
+
+
+
+
+
+
+
 ### skills开发
 
 

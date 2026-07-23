@@ -68,11 +68,11 @@ class LoreService:
     def build_context(self, project_id: int) -> dict:
         with get_conn() as conn:
             c = conn.cursor()
-            c.execute("SELECT name, profile FROM character_cards WHERE project_id = %s", (project_id,))
-            characters = [{"name": r["name"], "profile": r["profile"]} for r in c.fetchall()]
+            c.execute("SELECT id, name, profile FROM character_cards WHERE project_id = %s", (project_id,))
+            characters = [{"id": r["id"], "name": r["name"], "profile": r["profile"]} for r in c.fetchall()]
 
             c.execute(
-                "SELECT item_type, name, content, tags FROM lore_items WHERE project_id = %s",
+                "SELECT id, item_type, name, content, tags FROM lore_items WHERE project_id = %s",
                 (project_id,),
             )
             lore_rows = c.fetchall()
@@ -80,6 +80,7 @@ class LoreService:
             world_rules, terms, taboos = [], [], []
             for row in lore_rows:
                 item = {
+                    "id": row["id"],
                     "name": row["name"],
                     "content": row["content"],
                     "tags": json.loads(row["tags"] or "[]"),
@@ -150,3 +151,25 @@ class LoreService:
                 (project_id,),
             )
             return list(c.fetchall())
+
+    # ---- 删除（前端「管理设定」用） ---------------------------------------
+
+    def delete_lore_item(self, project_id: int, item_id: int) -> dict:
+        """删除一条 lore_items（世界规则/术语/禁忌）。返回受影响行数。"""
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute(
+                "DELETE FROM lore_items WHERE id = %s AND project_id = %s",
+                (item_id, project_id),
+            )
+            return {"deleted": c.rowcount}
+
+    def delete_character(self, project_id: int, character_id: int) -> dict:
+        """删除一张角色卡。返回受影响行数。"""
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute(
+                "DELETE FROM character_cards WHERE id = %s AND project_id = %s",
+                (character_id, project_id),
+            )
+            return {"deleted": c.rowcount}

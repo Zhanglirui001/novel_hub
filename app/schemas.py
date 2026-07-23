@@ -72,6 +72,7 @@ class ContinuePayload(BaseModel):
     target_latency_ms: int = 6000
     mode: str = "continue"  # continue（段中续写）| opening（新章起笔）
     mainline: str = ""  # 本章故事主线，按需引用
+    use_global_mainline: bool = True  # 是否注入全书主线摘要（常驻，可关）
 
 
 class ContinueAcceptPayload(BaseModel):
@@ -236,6 +237,11 @@ class MainlineDiscussionPayload(BaseModel):
 class MainlineSavePayload(BaseModel):
     project_id: int
     content: str = ""
+
+
+class GlobalMainlineSavePayload(BaseModel):
+    content: str = ""
+    summary: str = ""
 
 
 class InspirationProposalActionPayload(BaseModel):

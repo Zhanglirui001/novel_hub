@@ -6,8 +6,11 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Globe,
   Loader2,
+  Lock,
   RotateCcw,
+  ScrollText,
   Sparkles,
   X,
 } from "lucide-react";
@@ -15,7 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { useMainline } from "@/lib/queries";
+import { useGlobalMainline, useMainline } from "@/lib/queries";
 import { useWorkspace } from "./workspace-context";
 
 // 快捷意图 chip：label 给用户看，value 是喂给意图解析的大白话。
@@ -50,6 +53,7 @@ export function ContinueGhostPanel() {
   const {
     selection,
     draft,
+    projectId,
     activeChapterId,
     ghostAnchor,
     ghostStreaming,
@@ -69,6 +73,9 @@ export function ContinueGhostPanel() {
   const { data: mainline } = useMainline(activeChapterId);
   const mainlineText = mainline?.content?.trim() ?? "";
   const [useMainlineRef, setUseMainlineRef] = React.useState(true);
+  const { data: globalMainline } = useGlobalMainline(projectId);
+  const globalSummary = (globalMainline?.summary || globalMainline?.content || "").trim();
+  const [useGlobalRef, setUseGlobalRef] = React.useState(true);
   const isOpening = !draft.trim();
 
   const active = ghostAnchor === null ? null : ghostCandidates.find((c) => c.id === activeGhostId) ?? null;
@@ -105,25 +112,25 @@ export function ContinueGhostPanel() {
 
   const submitFresh = () => {
     if (ghostStreaming) return;
-    runContinue(instruction, { directive: null, mainline: mainlineArg });
+    runContinue(instruction, { directive: null, mainline: mainlineArg, useGlobalMainline: useGlobalRef });
   };
 
   // 微调 / 换一版：复用当前候选的 directive，走廉价增量（意图与取材不重跑）。
   const submitRefine = () => {
     if (ghostStreaming) return;
-    runContinue(instruction, { directive: active?.directive ?? null, mainline: mainlineArg });
+    runContinue(instruction, { directive: active?.directive ?? null, mainline: mainlineArg, useGlobalMainline: useGlobalRef });
     setInstruction("");
   };
 
   const regenerate = () => {
     if (ghostStreaming) return;
-    runContinue("", { directive: active?.directive ?? null, mainline: mainlineArg });
+    runContinue("", { directive: active?.directive ?? null, mainline: mainlineArg, useGlobalMainline: useGlobalRef });
   };
 
   const onChip = (value: string) => {
     if (ghostStreaming) return;
     setInstruction(value);
-    runContinue(value, { directive: hasCandidate ? active?.directive ?? null : null, mainline: mainlineArg });
+    runContinue(value, { directive: hasCandidate ? active?.directive ?? null : null, mainline: mainlineArg, useGlobalMainline: useGlobalRef });
   };
 
   const cycle = (dir: 1 | -1) => {
@@ -187,26 +194,71 @@ export function ContinueGhostPanel() {
           </div>
         )}
 
-        {/* 本章主线：按需引用（仅在已确认主线时出现） */}
-        {mainlineText && (
-          <button
-            type="button"
-            onClick={() => setUseMainlineRef((v) => !v)}
-            className={cn(
-              "flex w-full items-start gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors",
-              useMainlineRef
-                ? "border-primary/40 bg-primary/5 text-foreground/80"
-                : "border-dashed text-muted-foreground hover:bg-muted/50",
-            )}
-            title={useMainlineRef ? "生成时会参考本章主线，点击关闭" : "生成时不参考本章主线，点击开启"}
-          >
-            <BookMarked className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", useMainlineRef ? "text-primary" : "")} />
-            <span className="flex-1">
-              <span className="font-medium">{useMainlineRef ? "参考本章主线" : "已忽略本章主线"}</span>
-              <span className="ml-1 line-clamp-1 text-muted-foreground">{mainlineText}</span>
-            </span>
-          </button>
-        )}
+        {/* 注入状态：一眼看清这次续写喂了哪些层，并可控制 */}
+        <div className="space-y-1.5 rounded-md border bg-muted/20 px-2.5 py-2">
+          <div className="flex items-center gap-1.5 text-[0.7rem] font-medium text-muted-foreground">
+            <Lock className="h-3 w-3" />
+            上下文注入
+          </div>
+          {/* 设定：常驻，不可关（只读） */}
+          <div className="flex items-center gap-2 rounded px-2 py-1 text-xs text-muted-foreground">
+            <ScrollText className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1">设定（世界观 / 术语 / 禁忌）</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[0.6rem]">常驻</span>
+          </div>
+          {/* 全书主线摘要：常驻但可关 */}
+          {globalSummary ? (
+            <button
+              type="button"
+              onClick={() => setUseGlobalRef((v) => !v)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors",
+                useGlobalRef ? "bg-primary/5 text-foreground/80" : "text-muted-foreground hover:bg-muted/50",
+              )}
+              title={useGlobalRef ? "生成时会注入全书主线摘要，点击关闭" : "生成时不注入全书主线，点击开启"}
+            >
+              <Globe className={cn("h-3.5 w-3.5 shrink-0", useGlobalRef ? "text-primary" : "")} />
+              <span className="flex-1 truncate">
+                <span className="font-medium">{useGlobalRef ? "全书主线摘要" : "已忽略全书主线"}</span>
+                <span className="ml-1 text-muted-foreground">{globalSummary}</span>
+              </span>
+              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[0.6rem]">
+                {useGlobalRef ? "开" : "关"}
+              </span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 rounded px-2 py-1 text-xs text-muted-foreground/60">
+              <Globe className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1">全书主线（未设置，去「剧情」页填写）</span>
+            </div>
+          )}
+          {/* 本章主线：按需引用（仅在已确认主线时可切换） */}
+          {mainlineText ? (
+            <button
+              type="button"
+              onClick={() => setUseMainlineRef((v) => !v)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors",
+                useMainlineRef ? "bg-primary/5 text-foreground/80" : "text-muted-foreground hover:bg-muted/50",
+              )}
+              title={useMainlineRef ? "生成时会参考本章主线，点击关闭" : "生成时不参考本章主线，点击开启"}
+            >
+              <BookMarked className={cn("h-3.5 w-3.5 shrink-0", useMainlineRef ? "text-primary" : "")} />
+              <span className="flex-1 truncate">
+                <span className="font-medium">{useMainlineRef ? "本章主线" : "已忽略本章主线"}</span>
+                <span className="ml-1 text-muted-foreground">{mainlineText}</span>
+              </span>
+              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[0.6rem]">
+                {useMainlineRef ? "开" : "关"}
+              </span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 rounded px-2 py-1 text-xs text-muted-foreground/60">
+              <BookMarked className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1">本章主线（未确认，去「剧情」页讨论）</span>
+            </div>
+          )}
+        </div>
 
         {/* 意图条：留空=顺着往下写；一句话=对下文的要求 */}
         <div className="flex items-center gap-2">

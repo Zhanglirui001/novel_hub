@@ -163,6 +163,23 @@ export function useSaveMainline(chapterId: number | null) {
   });
 }
 
+export function useGlobalMainline(projectId: number) {
+  return useQuery({
+    queryKey: ["global-mainline", projectId],
+    queryFn: () => api.getGlobalMainline(projectId),
+    enabled: Number.isFinite(projectId),
+  });
+}
+
+export function useSaveGlobalMainline(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { content: string; summary: string }) =>
+      api.saveGlobalMainline(projectId, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["global-mainline", projectId] }),
+  });
+}
+
 export function useLore(projectId: number) {
   return useQuery({
     queryKey: ["lore", projectId],
@@ -176,6 +193,22 @@ export function useImportLore(_projectId?: number) {
   return useMutation({
     mutationFn: (payload: LoreImportRequest) => api.importLore(payload),
     onSuccess: (_, payload) => queryClient.invalidateQueries({ queryKey: ["lore", payload.project_id] }),
+  });
+}
+
+export function useDeleteLoreItem(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: number) => api.deleteLoreItem(projectId, itemId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lore", projectId] }),
+  });
+}
+
+export function useDeleteCharacter(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (characterId: number) => api.deleteCharacter(projectId, characterId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lore", projectId] }),
   });
 }
 

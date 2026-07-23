@@ -46,6 +46,7 @@ import {
   InspirationProposal,
   InspirationProposalAction,
   ChapterMainline,
+  GlobalMainline,
   MainlineDiscussionPayload,
   MainlineDiscussionEvent,
   TaskType,
@@ -192,6 +193,16 @@ export const api = {
     return request<LoreImportResponse>('/lore/import', {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+  deleteLoreItem(projectId: number, itemId: number) {
+    return request<{ deleted: number }>(`/projects/${projectId}/lore/items/${itemId}`, {
+      method: 'DELETE',
+    });
+  },
+  deleteCharacter(projectId: number, characterId: number) {
+    return request<{ deleted: number }>(`/projects/${projectId}/characters/${characterId}`, {
+      method: 'DELETE',
     });
   },
   getStyleProfile(projectId: number) {
@@ -519,6 +530,19 @@ export const api = {
   },
   async saveMainline(chapterId: number, payload: { project_id: number; content: string }): Promise<ChapterMainline> {
     return request<ChapterMainline>(`/chapters/${chapterId}/mainline`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+  async getGlobalMainline(projectId: number): Promise<GlobalMainline | null> {
+    const data = await request<GlobalMainline | Record<string, never>>(`/projects/${projectId}/mainline`);
+    return data && "content" in data ? (data as GlobalMainline) : null;
+  },
+  async saveGlobalMainline(
+    projectId: number,
+    payload: { content: string; summary: string },
+  ): Promise<GlobalMainline> {
+    return request<GlobalMainline>(`/projects/${projectId}/mainline`, {
       method: "PUT",
       body: JSON.stringify(payload),
     });
