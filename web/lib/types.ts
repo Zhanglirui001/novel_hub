@@ -586,3 +586,56 @@ export type MainlineDiscussionEvent =
   | { type: "delta"; text: string }
   | { type: "done"; reply: string }
   | { type: "error"; message: string };
+
+// ---- 故事线（可编辑流程图）--------------------------------------------------
+
+export interface StorylineViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface StorylineNode {
+  id: string;
+  graph_id: number;
+  title: string;
+  description: string;
+  position_x: number;
+  position_y: number;
+  width: number | null;
+  height: number | null;
+  z_index: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StorylineEdge {
+  id: string;
+  graph_id: number;
+  source_node_id: string;
+  target_node_id: string;
+  label: string;
+  style: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StorylineGraph {
+  id: number;
+  project_id: number;
+  viewport: StorylineViewport;
+  version: number;
+  nodes: StorylineNode[];
+  edges: StorylineEdge[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StorylineGraphPatch {
+  expected_graph_version: number;
+  viewport: StorylineViewport;
+  nodes: StorylineNode[];
+  deleted_node_ids: string[];
+  edges: StorylineEdge[];
+  deleted_edge_ids: string[];
+}

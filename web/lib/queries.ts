@@ -16,6 +16,7 @@ import type {
   DailyTodoUpdateRequest,
   InspirationCardPayload,
   InspirationGraphPatch,
+  StorylineGraphPatch,
 } from "./types";
 
 export function useProjects() {
@@ -498,6 +499,24 @@ export function usePatchInspirationGraph(projectId: number, boardId: number | nu
     onSuccess: (graph) => {
       queryClient.setQueryData(["inspiration-board", projectId, boardId], graph);
       queryClient.invalidateQueries({ queryKey: ["inspiration-boards", projectId] });
+    },
+  });
+}
+
+export function useStoryline(projectId: number) {
+  return useQuery({
+    queryKey: ["storyline", projectId],
+    queryFn: () => api.getStoryline(projectId),
+    enabled: Number.isFinite(projectId),
+  });
+}
+
+export function usePatchStorylineGraph(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: StorylineGraphPatch) => api.patchStorylineGraph(projectId, payload),
+    onSuccess: (graph) => {
+      queryClient.setQueryData(["storyline", projectId], graph);
     },
   });
 }

@@ -185,7 +185,7 @@ export function WorkspaceShell() {
             </DialogHeader>
             <div className="min-h-0 flex-1">
               {FullscreenPanel ? (
-                fullscreenTab === "chat" ? (
+                fullscreenEntry?.fullBleed ? (
                   <FullscreenPanel fullscreen />
                 ) : (
                   <ScrollArea className="h-full soft-scroll">

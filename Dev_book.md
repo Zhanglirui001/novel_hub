@@ -854,9 +854,35 @@ Nothing here is committed — all changes are in the working tree for you to rev
 
 建议启动实机走查：`cd web && npm run dev`（README 用 3001 端口），逐个面板点全屏、试设定表单导入+删除、在剧情页存全书主线后开关注入开关续写。
 
+> 能否在右侧功能栏中再加入一个故事线功能，效果为可编辑的流程图
 
+**改动概览**
 
+**后端（Python / FastAPI / MySQL）**
 
+- [app/database.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/database.py) — `init_db()` 新增 3 张表：`storyline_graphs`（每项目一条，含视口+版本号乐观锁）、`storyline_nodes`（标题+简介+坐标）、`storyline_edges`。
+- [app/schemas.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/schemas.py) — `StorylineNodePayload / StorylineEdgePayload / StorylineGraphPatchPayload`。
+- [app/services/storyline_service.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/services/storyline_service.py) — 新服务：`get_or_create_graph`（首次访问自动建空图）、`patch_graph`（版本校验→整体 upsert+删除→版本自增）。
+- [app/api.py](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/app/api.py) — `GET /projects/{id}/storyline`、`PATCH /projects/{id}/storyline/graph`（冲突返回 409）。
+
+**前端（Next.js / React / React Flow）**
+
+- [web/lib/types.ts](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/types.ts)、[web/lib/api.ts](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/api.ts)、[web/lib/queries.ts](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/lib/queries.ts) — 类型 + `getStoryline/patchStorylineGraph` + `useStoryline/usePatchStorylineGraph`。
+- [storyline-node.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/storyline-node.tsx) — 自定义节点，双击行内编辑标题/简介，四向连线柄。
+- [storyline-canvas.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/storyline-canvas.tsx) — 以灵感画板 `board-canvas` 为蓝本裁剪：拖拽、连线、重连、删除、缩略图、「+ 新增情节」按钮。复用了现有 `.inspiration-board` 系列样式（零新增 CSS）。
+- [storyline-panel.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/storyline-panel.tsx) — 面板容器，600ms 防抖保存、409 冲突自动重载、支持全屏。
+- [dock-tabs.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/dock-tabs.tsx) — 注册「故事线」标签（`Waypoints` 图标），并给 `DockTab` 加了 `fullBleed` 标记。
+- [workspace-shell.tsx](vscode-webview://0o2v0j9483b43sgrl1f95ukeb06pt09fero2ea31bm8dggnmeu7p/web/components/workspace/workspace-shell.tsx) — 全屏布局改用 `fullBleed`（原来硬编码只对聊天生效），让画布能铺满对话框。
+
+**验证情况**
+
+- `tsc --noEmit` 全项目通过（0 错误）。
+- Python schema/service 导入与校验通过。
+- 注：Next 16 已移除 `next lint`，故以 tsc 为类型闸门。
+
+**还需你本地跑一遍确认运行时效果**（我无法启动你的 MySQL）：启动后端（会自动建出 `storyline_*` 三表）→ `cd web && npm run dev` → 打开作品，右侧 dock 点「故事线」→ 新增/编辑/连线/删除节点 → 刷新确认已落库 → 点全屏展开。
+
+一个可选的小决策留给你：目前节点是「标题+简介」的纯情节节点（按之前确认）。如果之后想加节点配色/类型区分，扩展点已经预留好（节点组件与表结构都容易加字段）。
 
 
 

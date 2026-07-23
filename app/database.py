@@ -405,6 +405,52 @@ def init_db() -> None:
         )
         c.execute(
             """
+            CREATE TABLE IF NOT EXISTS storyline_graphs (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                project_id INT NOT NULL,
+                viewport_json TEXT NOT NULL,
+                version INT NOT NULL DEFAULT 1,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                UNIQUE KEY uq_storyline_graph_project(project_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS storyline_nodes (
+                id VARCHAR(64) PRIMARY KEY,
+                graph_id INT NOT NULL,
+                title VARCHAR(255) NOT NULL DEFAULT '',
+                description MEDIUMTEXT NOT NULL,
+                position_x DOUBLE NOT NULL DEFAULT 0,
+                position_y DOUBLE NOT NULL DEFAULT 0,
+                width DOUBLE NULL,
+                height DOUBLE NULL,
+                z_index INT NOT NULL DEFAULT 0,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_storyline_nodes_graph(graph_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS storyline_edges (
+                id VARCHAR(64) PRIMARY KEY,
+                graph_id INT NOT NULL,
+                source_node_id VARCHAR(64) NOT NULL,
+                target_node_id VARCHAR(64) NOT NULL,
+                label VARCHAR(255) NOT NULL DEFAULT '',
+                style_json TEXT NOT NULL,
+                created_at VARCHAR(32) NOT NULL,
+                updated_at VARCHAR(32) NOT NULL,
+                INDEX idx_storyline_edges_graph(graph_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
             CREATE TABLE IF NOT EXISTS inspiration_cards (
                 id INT PRIMARY KEY AUTO_INCREMENT,
                 project_id INT NOT NULL,

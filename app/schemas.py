@@ -256,3 +256,31 @@ class InspirationProposalCreatePayload(BaseModel):
     base_graph_version: int = Field(ge=1)
     actions: list[InspirationProposalActionPayload] = Field(min_length=1)
 
+
+class StorylineNodePayload(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    title: str = Field(default="", max_length=255)
+    description: str = ""
+    position_x: float = 0
+    position_y: float = 0
+    width: float | None = None
+    height: float | None = None
+    z_index: int = 0
+
+
+class StorylineEdgePayload(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    source_node_id: str = Field(min_length=1, max_length=64)
+    target_node_id: str = Field(min_length=1, max_length=64)
+    label: str = Field(default="", max_length=255)
+    style: dict[str, Any] = Field(default_factory=dict)
+
+
+class StorylineGraphPatchPayload(BaseModel):
+    expected_graph_version: int = Field(ge=1)
+    viewport: dict[str, float] = Field(default_factory=dict)
+    nodes: list[StorylineNodePayload] = Field(default_factory=list)
+    deleted_node_ids: list[str] = Field(default_factory=list)
+    edges: list[StorylineEdgePayload] = Field(default_factory=list)
+    deleted_edge_ids: list[str] = Field(default_factory=list)
+

@@ -45,6 +45,8 @@ import {
   InspirationGraphPatch,
   InspirationProposal,
   InspirationProposalAction,
+  StorylineGraph,
+  StorylineGraphPatch,
   ChapterMainline,
   GlobalMainline,
   MainlineDiscussionPayload,
@@ -457,6 +459,15 @@ export const api = {
   },
   patchInspirationGraph(projectId: number, boardId: number, payload: InspirationGraphPatch) {
     return request<InspirationBoardGraph>(`/projects/${projectId}/inspiration/boards/${boardId}/graph`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+  getStoryline(projectId: number) {
+    return request<StorylineGraph>(`/projects/${projectId}/storyline`);
+  },
+  patchStorylineGraph(projectId: number, payload: StorylineGraphPatch) {
+    return request<StorylineGraph>(`/projects/${projectId}/storyline/graph`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });

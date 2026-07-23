@@ -39,10 +39,12 @@ from app.schemas import (
     GlobalMainlineSavePayload,
     PatchApplyPayload,
     ProjectCreate,
+    StorylineGraphPatchPayload,
     StyleProfilePayload,
 )
 from app.services import ChatService, ConsistencyGuard, GenerationService, InspirationService, LoreService, StyleService
 from app.services.inspiration_service import GraphConflictError
+from app.services.storyline_service import StorylineService
 from app.services.checkin_service import CheckinService
 from app.services.writing_agent import WritingAgent
 from app.services.mainline_service import MainlineService
@@ -68,6 +70,7 @@ generation_service = GenerationService()
 consistency_guard = ConsistencyGuard()
 chat_service = ChatService()
 inspiration_service = InspirationService()
+storyline_service = StorylineService()
 checkin_service = CheckinService()
 writing_agent = WritingAgent()
 mainline_service = MainlineService()
@@ -187,6 +190,24 @@ def patch_inspiration_graph(project_id: int, board_id: int, payload: Inspiration
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404 if "不属于" in str(exc) else 400, detail=str(exc)) from exc
+
+
+@app.get("/projects/{project_id}/storyline")
+def get_storyline(project_id: int):
+    try:
+        return storyline_service.get_or_create_graph(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.patch("/projects/{project_id}/storyline/graph")
+def patch_storyline_graph(project_id: int, payload: StorylineGraphPatchPayload):
+    try:
+        return storyline_service.patch_graph(project_id, payload.model_dump())
+    except GraphConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "不存在" in str(exc) else 400, detail=str(exc)) from exc
 
 
 @app.post("/projects/{project_id}/inspiration/boards/{board_id}/proposals")
