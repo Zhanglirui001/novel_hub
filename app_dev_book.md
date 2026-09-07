@@ -80,3 +80,33 @@
 > - 用 Inno Setup / NSIS 生成 Windows 安装包
 >
 > 尝试做到双击桌面图标即可运行，不需要用户安装 Python、Node.js 或 MySQL。
+
+已完成 Windows 桌面安装版，并已实际安装和验证。
+
+安装包：[NovelHub-Setup-0.1.0.exe](C:/Data/agentGroups/novel_hub/release/NovelHub-Setup-0.1.0.exe)
+
+实现内容：
+
+- Next.js standalone 生产服务
+- PyInstaller 打包 FastAPI 与统一启动器
+- 默认切换至 SQLite
+- 内置 Node.js，无需用户安装
+- 桌面快捷方式一键启动并打开浏览器
+- 重复启动只打开页面，不重复运行服务
+- 开始菜单提供 `Stop Novel Hub`
+- 用户数据保存在 `%LOCALAPPDATA%\NovelHub`
+- 原 MySQL 数据已迁移：11 张表、37 条记录
+- 安装器不会在卸载时删除作品数据
+
+验收结果：
+
+- 安装成功，桌面快捷方式已创建
+- 安装目录独立启动成功
+- 前端和 API 均返回 `200`
+- 成功读取 2 个现有作品
+- 停止入口正常释放全部端口
+- 18 项测试全部通过
+- 安装包约 78.3 MB
+- SHA-256：`8983ED0B676792AFE9A3824078A62F02C2D28C28180BF93F8EED491D04ABC56A`
+
+构建说明见 [PACKAGING.md](C:/Data/agentGroups/novel_hub/PACKAGING.md)。应用当前处于停止状态，现在可以直接双击桌面的 `Novel Hub` 图标运行。安装包尚未进行代码签名，因此在其他电脑上可能出现 Windows SmartScreen 的“未知发布者”提示。

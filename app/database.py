@@ -1,4 +1,7 @@
 import queue
+import os
+import re
+import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -6,6 +9,112 @@ import pymysql
 from pymysql.cursors import DictCursor
 
 import app.config as config
+
+
+def _is_sqlite() -> bool:
+    return config.settings.database_backend == "sqlite"
+
+
+def _is_duplicate_column_error(exc: Exception) -> bool:
+    if _is_sqlite():
+        return isinstance(exc, sqlite3.OperationalError) and "duplicate column name" in str(exc).lower()
+    return isinstance(exc, pymysql.err.OperationalError) and bool(exc.args) and exc.args[0] == 1060
+
+
+def _translate_sqlite_sql(sql: str) -> str:
+    translated = sql.replace("%s", "?")
+    translated = re.sub(r"\bINT\s+PRIMARY\s+KEY\s+AUTO_INCREMENT\b", "INTEGER PRIMARY KEY AUTOINCREMENT", translated, flags=re.I)
+    translated = re.sub(r"\bMEDIUMTEXT\b", "TEXT", translated, flags=re.I)
+    translated = re.sub(r"\bDECIMAL\s*\([^)]*\)", "REAL", translated, flags=re.I)
+    translated = re.sub(r"\s+AFTER\s+`?\w+`?", "", translated, flags=re.I)
+    translated = re.sub(
+        r"ON\s+DUPLICATE\s+KEY\s+UPDATE\s+completed_at\s*=\s*completed_at",
+        "ON CONFLICT DO NOTHING",
+        translated,
+        flags=re.I,
+    )
+    translated = re.sub(
+        r"ON\s+DUPLICATE\s+KEY\s+UPDATE\s+updated_at\s*=\s*VALUES\s*\(updated_at\)",
+        "ON CONFLICT DO UPDATE SET updated_at = excluded.updated_at",
+        translated,
+        flags=re.I,
+    )
+    translated = re.sub(r"\bINSERT\s+IGNORE\b", "INSERT OR IGNORE", translated, flags=re.I)
+    translated = re.sub(r"\s+FOR\s+UPDATE\b", "", translated, flags=re.I)
+    translated = re.sub(
+        r",\s*UNIQUE\s+KEY\s+`?\w+`?\s*\(([^)]+)\)",
+        r", UNIQUE(\1)",
+        translated,
+        flags=re.I,
+    )
+    while re.search(r",\s*INDEX\s+`?\w+`?\s*\([^)]*\)", translated, flags=re.I):
+        translated = re.sub(r",\s*INDEX\s+`?\w+`?\s*\([^)]*\)", "", translated, count=1, flags=re.I)
+    translated = re.sub(r"\)\s*ENGINE\s*=\s*\w+\s+DEFAULT\s+CHARSET\s*=\s*\w+\s*$", ")", translated, flags=re.I | re.S)
+    return translated
+
+
+class _SQLiteCursor:
+    def __init__(self, cursor: sqlite3.Cursor):
+        self._cursor = cursor
+
+    def execute(self, sql, params=None):
+        self._cursor.execute(_translate_sqlite_sql(sql), tuple(params or ()))
+        return self
+
+    def executemany(self, sql, params):
+        self._cursor.executemany(_translate_sqlite_sql(sql), params)
+        return self
+
+    @property
+    def lastrowid(self):
+        return self._cursor.lastrowid
+
+    @property
+    def rowcount(self):
+        return self._cursor.rowcount
+
+    def _dict_row(self, row):
+        if row is None:
+            return None
+        columns = [item[0] for item in self._cursor.description]
+        return dict(zip(columns, row))
+
+    def fetchone(self):
+        return self._dict_row(self._cursor.fetchone())
+
+    def fetchall(self):
+        rows = self._cursor.fetchall()
+        if not rows:
+            return []
+        columns = [item[0] for item in self._cursor.description]
+        return [dict(zip(columns, row)) for row in rows]
+
+    def __iter__(self):
+        for row in self.fetchall():
+            yield row
+
+
+class _SQLiteConnection:
+    def __init__(self, path: str):
+        self._connection = sqlite3.connect(path, timeout=30, check_same_thread=False)
+        self._connection.execute("PRAGMA journal_mode=WAL")
+        self._connection.execute("PRAGMA foreign_keys=ON")
+        self._connection.execute("PRAGMA busy_timeout=30000")
+
+    def cursor(self):
+        return _SQLiteCursor(self._connection.cursor())
+
+    def commit(self):
+        self._connection.commit()
+
+    def rollback(self):
+        self._connection.rollback()
+
+    def close(self):
+        self._connection.close()
+
+    def ping(self, reconnect=True):
+        self._connection.execute("SELECT 1")
 
 
 def utc_now() -> str:
@@ -17,6 +126,10 @@ def utc_today() -> str:
 
 
 def _base_connect(db: str | None = None):
+    if _is_sqlite():
+        path = os.path.abspath(config.settings.sqlite_path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        return _SQLiteConnection(path)
     return pymysql.connect(
         host=config.settings.mysql_host,
         port=config.settings.mysql_port,
@@ -82,11 +195,17 @@ def get_conn():
 
 
 def _column_exists(cursor, table: str, column: str) -> bool:
+    if _is_sqlite():
+        cursor.execute(f"PRAGMA table_info(`{table}`)")
+        return any(row["name"] == column for row in cursor.fetchall())
     cursor.execute(f"SHOW COLUMNS FROM `{table}` LIKE %s", (column,))
     return cursor.fetchone() is not None
 
 
 def _index_exists(cursor, table: str, index: str) -> bool:
+    if _is_sqlite():
+        cursor.execute(f"PRAGMA index_list(`{table}`)")
+        return any(row["name"] == index for row in cursor.fetchall())
     cursor.execute(f"SHOW INDEX FROM `{table}` WHERE Key_name = %s", (index,))
     return cursor.fetchone() is not None
 
@@ -125,15 +244,16 @@ def _ensure_chapter_hierarchy(cursor) -> None:
 
 
 def init_db() -> None:
-    bootstrap = _base_connect(None)
-    try:
-        with bootstrap.cursor() as c:
-            c.execute(
-                f"CREATE DATABASE IF NOT EXISTS `{config.settings.mysql_database}` CHARACTER SET {config.settings.mysql_charset}"
-            )
-        bootstrap.commit()
-    finally:
-        bootstrap.close()
+    if not _is_sqlite():
+        bootstrap = _base_connect(None)
+        try:
+            with bootstrap.cursor() as c:
+                c.execute(
+                    f"CREATE DATABASE IF NOT EXISTS `{config.settings.mysql_database}` CHARACTER SET {config.settings.mysql_charset}"
+                )
+            bootstrap.commit()
+        finally:
+            bootstrap.close()
 
     with get_conn() as conn:
         c = conn.cursor()
@@ -343,8 +463,8 @@ def init_db() -> None:
         ):
             try:
                 c.execute(statement)
-            except pymysql.err.OperationalError as exc:
-                if exc.args[0] != 1060:
+            except Exception as exc:
+                if not _is_duplicate_column_error(exc):
                     raise
         c.execute(
             """
@@ -361,8 +481,8 @@ def init_db() -> None:
         )
         try:
             c.execute("ALTER TABLE daily_checkins ADD COLUMN is_makeup BOOLEAN NOT NULL DEFAULT FALSE")
-        except pymysql.err.OperationalError as exc:
-            if exc.args[0] != 1060:
+        except Exception as exc:
+            if not _is_duplicate_column_error(exc):
                 raise
         c.execute(
             """

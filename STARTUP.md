@@ -48,8 +48,15 @@ start.bat -NoBrowser -SkipInstall
 - Node.js 18 or newer
 - A running MySQL 5.7/8.0 server
 
-Database connection values can be overridden in the root `.env` file. If startup
-fails, inspect `.runtime/backend.stderr.log` and `.runtime/frontend.stderr.log`.
+SQLite is used by default and stored in `data/novel_hub.db` during development. The
+packaged desktop application stores its database and backups in `%LOCALAPPDATA%\NovelHub`.
+If startup fails, inspect `.runtime/backend.stderr.log` and `.runtime/frontend.stderr.log`.
+
+An existing MySQL database can be migrated once with:
+
+```powershell
+python scripts\migrate_mysql_to_sqlite.py --target data\novel_hub.db
+```
 
 If Windows resolves `python.exe` to the Microsoft Store placeholder, explicitly set
 the interpreter before starting:

@@ -37,6 +37,11 @@ _load_dotenv()
 
 @dataclass(frozen=True)
 class Settings:
+    database_backend: str = os.getenv("DATABASE_BACKEND", "sqlite").strip().lower()
+    sqlite_path: str = os.getenv(
+        "SQLITE_PATH",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "novel_hub.db")),
+    )
     mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
     mysql_port: int = int(os.getenv("MYSQL_PORT", "3306"))
     mysql_user: str = os.getenv("MYSQL_USER", "root")

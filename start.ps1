@@ -19,6 +19,18 @@ $FrontendErrLog = Join-Path $RuntimeRoot "frontend.stderr.log"
 $BackendUrl = "http://127.0.0.1:8000"
 $FrontendUrl = "http://localhost:3001"
 
+if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("DATABASE_BACKEND"))) {
+    $env:DATABASE_BACKEND = "sqlite"
+}
+if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("SQLITE_PATH"))) {
+    $localDataRoot = Join-Path $env:LOCALAPPDATA "NovelHub"
+    New-Item -ItemType Directory -Path $localDataRoot -Force | Out-Null
+    $env:SQLITE_PATH = Join-Path $localDataRoot "novel_hub.db"
+}
+if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("BACKUP_DIR"))) {
+    $env:BACKUP_DIR = Join-Path (Split-Path $env:SQLITE_PATH) "backups"
+}
+
 function Write-Step([string]$Message) {
     Write-Host "[Novel Hub] $Message" -ForegroundColor Cyan
 }
@@ -196,12 +208,12 @@ if (-not $SkipInstall) {
     }
 }
 
-Write-Step "Initializing and checking MySQL..."
+Write-Step "Initializing and checking the local SQLite database..."
 Push-Location $ProjectRoot
 try {
     & $pythonExecutable @pythonPrefixArgs -c "from app.database import init_db; init_db()"
     if ($LASTEXITCODE -ne 0) {
-        Fail "Database initialization failed. Make sure MySQL is running and check the root .env file."
+        Fail "SQLite database initialization failed. Check write access to the project data directory."
     }
 }
 finally {
