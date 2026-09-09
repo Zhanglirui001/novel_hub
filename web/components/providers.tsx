@@ -12,7 +12,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
           queries: {
             staleTime: 30_000,
             refetchOnWindowFocus: false,
-            retry: 1,
+            retry: (failureCount) =>
+              failureCount < (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? 8 : 1),
+            retryDelay: (attempt) => Math.min(300 * 2 ** attempt, 1500),
           },
         },
       })

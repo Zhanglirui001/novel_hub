@@ -1,7 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  output: "standalone",
+  // Tauri ships the UI as immutable assets. Runtime state lives exclusively
+  // behind the local FastAPI sidecar, so no Node.js server is needed in prod.
+  output: "export",
+  images: { unoptimized: true },
+  trailingSlash: true,
   allowedDevOrigins: [
     "localhost",
     "127.0.0.1",

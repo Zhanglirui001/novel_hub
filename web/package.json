@@ -5,10 +5,15 @@
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
-    "start": "next start -p 3001",
+    "start": "npx serve out -l 3001",
+    "tauri": "tauri",
+    "sidecar:prepare": "powershell -ExecutionPolicy Bypass -File ../scripts/prepare_tauri_sidecar.ps1 -SkipDependencyInstall",
+    "desktop:dev": "npm run sidecar:prepare && tauri dev",
+    "desktop:build": "npm run sidecar:prepare && tauri build",
     "lint": "next lint"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-label": "^2.1.0",
     "@radix-ui/react-scroll-area": "^1.2.1",
@@ -32,6 +37,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0",
     "@types/node": "^22.9.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

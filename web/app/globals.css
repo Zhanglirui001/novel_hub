@@ -12,6 +12,8 @@
  */
 @layer base {
   :root {
+    --font-sans: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+    --font-serif: "Source Han Serif SC", "Noto Serif SC", "Songti SC", serif;
     --background: 240 20% 99%; /* #FCFCFD 近纯白 */
     --foreground: 240 10% 9%; /* 墨黑 */
 

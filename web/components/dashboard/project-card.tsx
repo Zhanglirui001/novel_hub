@@ -21,7 +21,7 @@ export function ProjectCard({ project }: { project: Project }) {
   const initial = Array.from(project.name.trim())[0] ?? "书";
 
   return (
-    <Link href={`/projects/${project.id}`} className="group block">
+    <Link href={`/workspace/?project=${project.id}`} className="group block">
       <Card className="overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
         <div
           className="relative flex h-36 items-center justify-center"

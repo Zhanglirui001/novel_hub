@@ -1,23 +1,8 @@
 import type { Metadata } from "next";
-import { Noto_Sans_SC, Noto_Serif_SC } from "next/font/google";
-
+import { DesktopTitlebar } from "@/components/desktop-titlebar";
 import { Providers } from "@/components/providers";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
-
-const notoSans = Noto_Sans_SC({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  variable: "--font-sans",
-  display: "swap",
-});
-
-const notoSerif = Noto_Serif_SC({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-serif",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "Novel Hub · 沉浸式写作工作台",
@@ -31,9 +16,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
-      <body className={`${notoSans.variable} ${notoSerif.variable} font-sans`}>
+      <body className="font-sans">
         <Providers>
-          {children}
+          <div className="flex h-screen flex-col overflow-hidden">
+            <DesktopTitlebar />
+            <div className="min-h-0 flex-1 overflow-auto">{children}</div>
+          </div>
           <Toaster position="top-center" richColors />
         </Providers>
       </body>

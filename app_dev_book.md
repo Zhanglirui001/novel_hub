@@ -110,3 +110,54 @@
 - SHA-256：`8983ED0B676792AFE9A3824078A62F02C2D28C28180BF93F8EED491D04ABC56A`
 
 构建说明见 [PACKAGING.md](C:/Data/agentGroups/novel_hub/PACKAGING.md)。应用当前处于停止状态，现在可以直接双击桌面的 `Novel Hub` 图标运行。安装包尚未进行代码签名，因此在其他电脑上可能出现 Windows SmartScreen 的“未知发布者”提示。
+
+> 将该项目朝向“Tauri 外壳 + 现有 Web UI + FastAPI sidecar + SQLite 的产品化方向改造，另外现有的ui你觉得还有可以改进的方向吗？我其实希望可以做成类似workbudy、codex等类似的桌面应用产品形式。而不是仅仅是一个ai修改和编辑的网页。
+
+已完成第一阶段桌面产品化改造，项目现在的目标架构是：
+
+```
+Tauri 桌面壳
+├─ Next.js 静态 Web UI
+└─ FastAPI sidecar
+   └─ SQLite 本地数据
+```
+
+主要落地内容：
+
+- 新增 Tauri 2 桌面工程，负责无边框窗口、窗口控制、单实例和 sidecar 生命周期。
+- Next.js 改为静态导出，正式版不再携带 Node.js 服务。
+- 工作区路由改为 `/workspace/?project=ID`，适配静态桌面资源。
+- FastAPI 独立打包为 sidecar，仅监听 `127.0.0.1:17831`。
+- SQLite、备份和崩溃日志迁移到系统应用数据目录。
+- 新增 sidecar 健康检查和 UI 运行状态指示。
+- 首页升级为桌面应用概览：应用侧栏、工作流入口、运行状态、最近作品和快速创建。
+- Windows 构建入口已从旧 PyInstaller 浏览器启动器切换到 Tauri。
+
+关键文件：
+
+- [桌面架构说明](C:/Data/agentGroups/novel_hub/TAURI_DESKTOP.md)
+- [Tauri 配置](C:/Data/agentGroups/novel_hub/web/src-tauri/tauri.conf.json)
+- [Tauri 生命周期管理](C:/Data/agentGroups/novel_hub/web/src-tauri/src/lib.rs)
+- [FastAPI sidecar](C:/Data/agentGroups/novel_hub/sidecar.py)
+- [桌面首页](C:/Data/agentGroups/novel_hub/web/app/page.tsx)
+- [Windows 构建脚本](C:/Data/agentGroups/novel_hub/build_windows.ps1)
+
+验证结果：
+
+- Next.js 静态生产构建通过。
+- 后端测试 `18 passed`。
+- sidecar EXE 实际启动、SQLite 初始化和 `/health` 探针通过。
+- 当前机器缺少 Rust 和 MSVC，因此尚未生成最终 MSI/NSIS；在装好工具链的构建机上运行 `.\build_windows.ps1` 即可继续。
+- npm 当前报告 7 个依赖安全问题，其中包含 1 个 critical，正式发布前需要单独做依赖审计。
+
+UI 产品方向上，我建议下一阶段优先做：
+
+1. 全局命令面板：类似 Codex 的 `Ctrl+K`，统一打开作品、章节、AI 操作和设置。
+2. 任务/运行中心：AI 续写、分析、一致性检查都变成可查看、取消、重试的任务。
+3. 统一产物流：所有 AI 修改遵循“建议 → Diff → 接受/拒绝 → 版本记录”。
+4. 项目级导航：写作、故事线、角色、世界观、灵感、素材和版本历史成为同级工作空间。
+5. 桌面能力：拖拽导入、导出文件夹、最近文件、托盘、后台任务、自动更新。
+6. 本地安全：API Key 从 SQLite 明文迁移到 Windows Credential Manager。
+7. 恢复能力：SQLite 自动快照、章节版本历史和崩溃恢复。
+
+现在它已经从“打开浏览器的 AI 编辑网页”迈到了真正桌面应用的架构基础；下一阶段重点应该是任务、产物、上下文和系统能力，而不是继续增加零散 AI 按钮。

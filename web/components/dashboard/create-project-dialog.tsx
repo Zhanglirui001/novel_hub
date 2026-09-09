@@ -42,7 +42,7 @@ export function CreateProjectDialog() {
       setOpen(false);
       setName("");
       setDescription("");
-      router.push(`/projects/${res.project_id}`);
+      router.push(`/workspace/?project=${res.project_id}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "创建失败");
     }

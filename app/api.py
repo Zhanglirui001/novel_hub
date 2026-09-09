@@ -2,6 +2,7 @@ import json
 import os
 import re
 
+import app.config as config
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -54,7 +55,15 @@ init_db()
 app = FastAPI(title="Novel Hub API", version="0.1.0")
 
 # 允许本地 Next.js 前端跨域访问。可通过 CORS_ORIGINS 环境变量覆盖（逗号分隔）。
-_default_origins = "http://localhost:3001,http://127.0.0.1:3001"
+_default_origins = ",".join(
+    (
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost",
+    )
+)
 allow_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", _default_origins).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
@@ -74,6 +83,14 @@ storyline_service = StorylineService()
 checkin_service = CheckinService()
 writing_agent = WritingAgent()
 mainline_service = MainlineService()
+
+
+@app.get("/health", tags=["runtime"])
+def health():
+    """Small readiness endpoint used by the desktop shell."""
+    with get_conn() as conn:
+        conn.cursor().execute("SELECT 1")
+    return {"status": "ok", "storage": config.settings.database_backend}
 
 
 def _checkin_error(exc: ValueError) -> HTTPException:

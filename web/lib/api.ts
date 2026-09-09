@@ -58,6 +58,11 @@ import {
 function getApiBase() {
   const configured = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "");
   if (configured) return configured;
+  // The packaged Tauri shell owns a loopback-only FastAPI sidecar on this port.
+  // Browser development keeps using the familiar :8000 backend.
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    return "http://127.0.0.1:17831";
+  }
   if (typeof window !== "undefined") return `${window.location.protocol}//${window.location.hostname}:8000`;
   return "http://localhost:8000";
 }
@@ -86,6 +91,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  health() {
+    return request<{ status: string; storage: string }>("/health");
+  },
   listProjects() {
     return request<Project[]>('/projects');
   },

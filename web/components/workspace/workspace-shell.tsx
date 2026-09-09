@@ -93,7 +93,7 @@ export function WorkspaceShell() {
   }, [fullscreenOpen, panelFullscreenWidth]);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
+    <div className="flex h-full flex-col overflow-hidden bg-background">
       {/* 顶栏 */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2">
@@ -121,7 +121,7 @@ export function WorkspaceShell() {
             className="h-8 gap-1.5 border-teal-200 bg-teal-50 px-2.5 text-teal-800 hover:border-teal-300 hover:bg-teal-100 hover:text-teal-950"
             asChild
           >
-            <Link href={`/projects/${projectId}/inspiration`} aria-label="打开灵感画板">
+            <Link href={`/inspiration/?project=${projectId}`} aria-label="打开灵感画板">
               <Network className="size-3.5" />
               <span>灵感</span>
               <span className="hidden text-[11px] text-teal-600 sm:inline">画板</span>

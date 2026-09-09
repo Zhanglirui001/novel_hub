@@ -19,6 +19,7 @@ var/
 wheels/
 *.manifest
 *.spec
+!NovelHubSidecar.spec
 pip-log.txt
 pip-delete-this-directory.txt
 
