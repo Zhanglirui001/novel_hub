@@ -484,7 +484,9 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
     });
   }, [activeChatSessionId, clearChatSessionMutation]);
 
+  const saveRunningRef = React.useRef(false);
   const saveNow = React.useCallback(async () => {
+    if (saveRunningRef.current) return;
     const title = titleRef.current.trim() || "未命名章节";
     const groupTitle = groupTitleRef.current.trim() || DEFAULT_GROUP_TITLE;
     const content = draftRef.current;
@@ -493,7 +495,8 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
       toast.error("章节标题或分组名称不能超过 255 个字符");
       return;
     }
-    if (!content.trim()) return;
+    if (!content.trim() && chapterIdRef.current === null) return;
+    saveRunningRef.current = true;
     setSaveStatus("saving");
     try {
       const res = await saveChapter.mutateAsync({
@@ -506,10 +509,12 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
       chapterIdRef.current = res.chapter_id;
       setActiveChapterId(res.chapter_id);
       setLastSavedAt(res.updated_at);
-      setSaveStatus("saved");
+      setSaveStatus(draftRef.current === content && (titleRef.current.trim() || "未命名章节") === title && (groupTitleRef.current.trim() || DEFAULT_GROUP_TITLE) === groupTitle ? "saved" : "dirty");
     } catch (err) {
       setSaveStatus("error");
       toast.error(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      saveRunningRef.current = false;
     }
   }, [projectId, saveChapter]);
 

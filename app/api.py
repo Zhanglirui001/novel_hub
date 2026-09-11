@@ -52,7 +52,13 @@ from app.services.mainline_service import MainlineService
 from app.services import backup_service, settings_service
 
 init_db()
-app = FastAPI(title="Novel Hub API", version="0.1.0")
+from app.version import __version__
+from app.recovery_api import router as recovery_router
+
+app = FastAPI(title="Novel Hub API", version=__version__)
+app.include_router(recovery_router)
+from app.recovery_guard import RecoveryGuard
+app.add_middleware(RecoveryGuard)
 
 # 允许本地 Next.js 前端跨域访问。可通过 CORS_ORIGINS 环境变量覆盖（逗号分隔）。
 _default_origins = ",".join(
@@ -90,7 +96,16 @@ def health():
     """Small readiness endpoint used by the desktop shell."""
     with get_conn() as conn:
         conn.cursor().execute("SELECT 1")
-    return {"status": "ok", "storage": config.settings.database_backend}
+    schema_version = None
+    if config.settings.database_backend == "sqlite":
+        from app.schema_migrations import current as schema_current
+        schema_version = schema_current()
+    return {
+        "status": "ok",
+        "storage": config.settings.database_backend,
+        "version": __version__,
+        "schema_version": schema_version,
+    }
 
 
 def _checkin_error(exc: ValueError) -> HTTPException:
@@ -436,7 +451,7 @@ def move_chapter(chapter_id: int, payload: ChapterPlacementPayload):
             )
             sort_order = c.fetchone()["next_order"]
         c.execute(
-            "UPDATE chapters SET group_title = %s, sort_order = %s, updated_at = %s WHERE id = %s",
+            "UPDATE chapters SET group_title = %s, sort_order = %s, version = version + 1, updated_at = %s WHERE id = %s",
             (group_title, sort_order, now, chapter_id),
         )
     return {
@@ -459,7 +474,7 @@ def rename_chapter(chapter_id: int, payload: ChapterRenamePayload):
         if not c.fetchone():
             raise HTTPException(status_code=404, detail=f"chapter_id={chapter_id} 不存在")
         c.execute(
-            "UPDATE chapters SET title = %s, updated_at = %s WHERE id = %s",
+            "UPDATE chapters SET title = %s, version = version + 1, updated_at = %s WHERE id = %s",
             (title, now, chapter_id),
         )
     return {"chapter_id": chapter_id, "title": title, "updated_at": now}

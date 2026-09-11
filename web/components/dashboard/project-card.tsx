@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
+import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { exportProjectFile } from "@/lib/recovery";
 import { formatDate } from "@/lib/utils";
 import type { Project } from "@/lib/types";
 
@@ -44,9 +47,25 @@ export function ProjectCard({ project }: { project: Project }) {
           <p className="line-clamp-2 min-h-[2.5rem] text-sm text-muted-foreground">
             {project.description || "暂无简介"}
           </p>
-          <p className="pt-1 text-xs text-muted-foreground/70">
-            创建于 {formatDate(project.created_at)}
-          </p>
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <p className="text-xs text-muted-foreground/70">
+              创建于 {formatDate(project.created_at)}
+            </p>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void exportProjectFile(project.id).then(() => toast.success("作品已导出")).catch((error: unknown) => {
+                  toast.error(error instanceof Error ? error.message : "导出失败");
+                });
+              }}
+            >
+              导出
+            </Button>
+          </div>
         </div>
       </Card>
     </Link>

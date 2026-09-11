@@ -13,6 +13,7 @@ import { ContinueGhostPanel } from "./continue-ghost-panel";
 import { InlineDiffCard } from "./inline-diff-card";
 import { InlineReviseOverlay } from "./inline-revise-overlay";
 import { useWorkspace } from "./workspace-context";
+import { ChapterHistory } from "./chapter-history";
 
 const STATUS_LABEL: Record<string, string> = {
   idle: "未保存草稿",
@@ -147,6 +148,7 @@ export function EditorPane() {
           />
           自动保存
         </label>
+        <ChapterHistory />
         <Button
           size="sm"
           variant="outline"

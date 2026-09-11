@@ -4,6 +4,7 @@ import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { CreateProjectDialog } from "@/components/dashboard/create-project-dialog";
 import { ProjectGallery } from "@/components/dashboard/project-gallery";
 import { ThemePicker } from "@/components/theme-picker";
+import { LibraryRecovery } from "@/components/dashboard/library-recovery";
 
 export default function DashboardPage() {
   return (
@@ -13,7 +14,7 @@ export default function DashboardPage() {
         <div className="mx-auto max-w-6xl px-7 py-7 lg:px-10">
           <header className="mb-7 flex items-center justify-between gap-6">
             <div><p className="text-xs text-muted-foreground">创作空间 / 概览</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">下午好，继续把故事写下去</h1></div>
-            <div className="flex items-center gap-2"><ThemePicker /><CreateProjectDialog /></div>
+            <div className="flex items-center gap-2"><ThemePicker /><LibraryRecovery /><CreateProjectDialog /></div>
           </header>
           <section className="relative mb-8 overflow-hidden rounded-2xl border bg-[radial-gradient(circle_at_80%_20%,hsl(var(--primary)/0.15),transparent_38%),linear-gradient(135deg,hsl(var(--card)),hsl(var(--muted)/0.6))] p-7">
             <div className="relative z-10 max-w-2xl">

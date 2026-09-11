@@ -86,3 +86,8 @@ $RECYCLE.BIN/
 backups/
 /.runtime/
 /release/
+/web/src-tauri/target/
+/web/src-tauri/gen/
+/web/src-tauri/binaries/*.exe
+*.db-wal
+*.db-shm

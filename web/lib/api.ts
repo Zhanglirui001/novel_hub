@@ -55,7 +55,7 @@ import {
   WritingDirective,
 } from "./types";
 
-function getApiBase() {
+export function getApiBase() {
   const configured = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "");
   if (configured) return configured;
   // The packaged Tauri shell owns a loopback-only FastAPI sidecar on this port.

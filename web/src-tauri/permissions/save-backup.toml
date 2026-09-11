@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-save-backup-file"
+description = "Save library or project backup files through the native dialog"
+commands.allow = ["save_backup_file"]

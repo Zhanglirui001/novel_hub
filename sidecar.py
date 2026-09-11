@@ -27,7 +27,19 @@ def _write_crash_log() -> None:
 
 
 def main() -> None:
+    from app.config import settings
+    if os.getenv('NOVEL_HUB_IMPORT_LEGACY') == '1' and os.getenv('LOCALAPPDATA'):
+        from app.services.legacy_import import import_legacy
+        import_legacy(Path(settings.sqlite_path), Path(os.environ['LOCALAPPDATA']) / 'NovelHub' / 'novel_hub.db')
     from app.api import app
+    from app.services.library_backup import daily_snapshot
+
+    if settings.database_backend == "sqlite":
+        try:
+            daily_snapshot()
+        except Exception:
+            # Failed backup must not prevent access to manuscripts.
+            _write_crash_log()
 
     host = os.getenv("NOVEL_HUB_HOST", "127.0.0.1")
     port = int(os.getenv("NOVEL_HUB_PORT", "17831"))

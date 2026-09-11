@@ -22,6 +22,8 @@ def _is_duplicate_column_error(exc: Exception) -> bool:
 
 
 def _translate_sqlite_sql(sql: str) -> str:
+    if sql.lstrip().upper().startswith('CREATE TRIGGER'):
+        return sql
     translated = sql.replace("%s", "?")
     translated = re.sub(r"\bINT\s+PRIMARY\s+KEY\s+AUTO_INCREMENT\b", "INTEGER PRIMARY KEY AUTOINCREMENT", translated, flags=re.I)
     translated = re.sub(r"\bMEDIUMTEXT\b", "TEXT", translated, flags=re.I)
@@ -284,6 +286,9 @@ def init_db() -> None:
             """
         )
         _ensure_chapter_hierarchy(c)
+        if _is_sqlite():
+            from app.schema_migrations import apply
+            apply(conn)
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS lore_items (

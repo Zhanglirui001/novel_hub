@@ -1,6 +1,6 @@
 [package]
 name = "novel-hub"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local-first AI writing workspace"
 authors = ["Novel Hub"]
 edition = "2021"
@@ -16,6 +16,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
 tauri-plugin-single-instance = "2"
+rfd = "0.17"
+tempfile = "3"
 
 [profile.release]
 panic = "abort"
