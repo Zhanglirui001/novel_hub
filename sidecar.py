@@ -8,11 +8,13 @@ small, independently testable desktop service.
 from __future__ import annotations
 
 import os
+import secrets
 import tempfile
 import traceback
 from pathlib import Path
 
 import uvicorn
+from starlette.responses import JSONResponse
 
 
 def _write_crash_log() -> None:
@@ -40,6 +42,15 @@ def main() -> None:
         except Exception:
             # Failed backup must not prevent access to manuscripts.
             _write_crash_log()
+
+    expected_token = os.getenv("NOVEL_HUB_TOKEN")
+    if expected_token:
+        @app.middleware("http")
+        async def require_desktop_token(request, call_next):
+            supplied = request.headers.get("x-novel-hub-token", "")
+            if not secrets.compare_digest(supplied, expected_token):
+                return JSONResponse({"detail": "本地客户端会话无效，请重新启动 Novel Hub"}, status_code=401)
+            return await call_next(request)
 
     host = os.getenv("NOVEL_HUB_HOST", "127.0.0.1")
     port = int(os.getenv("NOVEL_HUB_PORT", "17831"))

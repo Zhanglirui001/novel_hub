@@ -6,6 +6,12 @@ import packageInfo from "../package.json";
 
 const isDesktop = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
+async function startDragging() {
+  if (!isDesktop()) return;
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  await getCurrentWindow().startDragging();
+}
+
 async function withWindow(action: "minimize" | "maximize" | "close") {
   if (!isDesktop()) return;
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
@@ -22,7 +28,13 @@ export function DesktopTitlebar() {
 
   return (
     <div className="desktop-titlebar flex h-9 shrink-0 select-none items-center border-b bg-background/95">
-      <div data-tauri-drag-region className="flex h-full min-w-0 flex-1 items-center gap-2 px-3">
+      <div
+        data-tauri-drag-region
+        className="flex h-full min-w-0 flex-1 items-center gap-2 px-3"
+        onMouseDown={(event) => {
+          if (event.button === 0) void startDragging();
+        }}
+      >
         <span className="grid size-5 place-items-center rounded-md bg-primary text-primary-foreground"><PanelsTopLeft className="size-3" /></span>
         <span className="text-xs font-semibold tracking-wide">Novel Hub · v{packageInfo.version}</span>
         <span className="hidden text-[11px] text-muted-foreground sm:inline">本地 AI 创作工作台</span>

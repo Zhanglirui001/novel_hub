@@ -8,6 +8,7 @@ export interface Project {
   name: string;
   description: string;
   created_at: string;
+  archived_at: string | null;
 }
 
 export interface DailyTodo {

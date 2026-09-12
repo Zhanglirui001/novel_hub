@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BrainCircuit, FilePlus2, Loader2, MessageSquareText, Network, Plus, Send, Sparkles, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, BrainCircuit, FilePlus2, Loader2, MessageSquareText, Network, Plus, Send, Sparkles, Trash2 } from "lucide-react";
 
 import { BoardCanvas } from "./board-canvas";
 import { Button } from "@/components/ui/button";
@@ -243,6 +244,12 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
     <main className="flex h-screen min-h-[680px] flex-col bg-zinc-100 text-zinc-900">
       <header className="flex min-h-14 items-center justify-between border-b border-zinc-200 bg-white px-4">
         <div className="flex min-w-0 items-center gap-3">
+          <Button asChild variant="ghost" size="sm" className="shrink-0 gap-1.5 px-2 text-zinc-600 hover:text-zinc-950">
+            <Link href="/" aria-label="返回书架">
+              <ArrowLeft className="size-4" />
+              <span className="hidden sm:inline">返回书架</span>
+            </Link>
+          </Button>
           <div className="flex size-8 items-center justify-center bg-teal-700 text-white"><BrainCircuit className="size-4" /></div>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{projectTitle}</p>

@@ -2,7 +2,7 @@
 from app.database import utc_now
 from app.version import __version__
 
-CURRENT = 1
+CURRENT = 2
 
 
 def _version(cursor) -> int:
@@ -38,4 +38,12 @@ def migrate_v1(conn) -> None:
     install(conn)
 
 
-MIGRATIONS = {1: migrate_v1}
+def migrate_v2(conn) -> None:
+    cursor = conn.cursor()
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS project_lifecycle (
+            project_id INTEGER PRIMARY KEY, archived_at TEXT)"""
+    )
+
+
+MIGRATIONS = {1: migrate_v1, 2: migrate_v2}

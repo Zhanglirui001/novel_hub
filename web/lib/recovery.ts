@@ -1,7 +1,7 @@
-import { getApiBase } from './api';
+import { apiHeaders, getApiBase } from './api';
 
 export async function recovery<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${getApiBase()}/recovery${path}`, init);
+  const res = await fetch(`${getApiBase()}/recovery${path}`, { ...init, headers: { ...(await apiHeaders()), ...init?.headers } });
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
     throw new Error(error.detail || `操作失败 (${res.status})`);
@@ -10,7 +10,7 @@ export async function recovery<T>(path: string, init?: RequestInit): Promise<T> 
 }
 
 export async function backupText(name: string) {
-  const res = await fetch(`${getApiBase()}/recovery/backups/${encodeURIComponent(name)}`);
+  const res = await fetch(`${getApiBase()}/recovery/backups/${encodeURIComponent(name)}`, { headers: await apiHeaders() });
   if (!res.ok) throw new Error('无法读取备份');
   return res.text();
 }
@@ -32,7 +32,7 @@ export async function saveBackup(name: string) {
 }
 
 export async function exportProjectFile(projectId: number) {
-  const res = await fetch(`${getApiBase()}/recovery/projects/${projectId}/export`);
+  const res = await fetch(`${getApiBase()}/recovery/projects/${projectId}/export`, { headers: await apiHeaders() });
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
     throw new Error(error.detail || '无法导出作品');

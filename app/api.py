@@ -40,6 +40,7 @@ from app.schemas import (
     GlobalMainlineSavePayload,
     PatchApplyPayload,
     ProjectCreate,
+    ProjectUpdate,
     StorylineGraphPatchPayload,
     StyleProfilePayload,
 )
@@ -127,10 +128,14 @@ def create_project(payload: ProjectCreate):
 
 
 @app.get("/projects")
-def list_projects():
+def list_projects(include_archived: bool = False):
     with get_conn() as conn:
         c = conn.cursor()
-        c.execute("SELECT id, name, description, created_at FROM projects ORDER BY id DESC")
+        query = """SELECT p.id, p.name, p.description, p.created_at, l.archived_at
+            FROM projects p LEFT JOIN project_lifecycle l ON l.project_id = p.id"""
+        if not include_archived:
+            query += " WHERE l.archived_at IS NULL"
+        c.execute(query + " ORDER BY id DESC")
         return list(c.fetchall())
 
 
@@ -139,13 +144,62 @@ def get_project(project_id: int):
     with get_conn() as conn:
         c = conn.cursor()
         c.execute(
-            "SELECT id, name, description, created_at FROM projects WHERE id = %s",
+            """SELECT p.id, p.name, p.description, p.created_at, l.archived_at
+            FROM projects p LEFT JOIN project_lifecycle l ON l.project_id = p.id
+            WHERE p.id = %s""",
             (project_id,),
         )
         row = c.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"project_id={project_id} 不存在")
     return row
+
+
+@app.patch("/projects/{project_id}")
+def update_project(project_id: int, payload: ProjectUpdate):
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(status_code=400, detail="至少提供一个要修改的字段")
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id FROM projects WHERE id = %s", (project_id,))
+        if not c.fetchone():
+            raise HTTPException(status_code=404, detail=f"project_id={project_id} 不存在")
+        assignments = ", ".join(f"{key} = %s" for key in changes)
+        c.execute(f"UPDATE projects SET {assignments} WHERE id = %s", (*changes.values(), project_id))
+        c.execute("""SELECT p.id, p.name, p.description, p.created_at, l.archived_at
+            FROM projects p LEFT JOIN project_lifecycle l ON l.project_id = p.id
+            WHERE p.id = %s""", (project_id,))
+        return c.fetchone()
+
+
+@app.post("/projects/{project_id}/archive")
+def archive_project(project_id: int, archived: bool = True):
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id FROM projects WHERE id = %s", (project_id,))
+        if not c.fetchone():
+            raise HTTPException(status_code=404, detail=f"project_id={project_id} 不存在")
+        archived_at = utc_now() if archived else None
+        c.execute("UPDATE project_lifecycle SET archived_at = %s WHERE project_id = %s", (archived_at, project_id))
+        if c.rowcount == 0:
+            c.execute("INSERT INTO project_lifecycle (project_id, archived_at) VALUES (%s, %s)", (project_id, archived_at))
+        c.execute("""SELECT p.id, p.name, p.description, p.created_at, l.archived_at
+            FROM projects p LEFT JOIN project_lifecycle l ON l.project_id = p.id
+            WHERE p.id = %s""", (project_id,))
+        return c.fetchone()
+
+
+@app.post("/projects/{project_id}/duplicate")
+def duplicate_project(project_id: int):
+    from app.services.project_archive import export_project, import_project
+    try:
+        payload = export_project(project_id)
+        return import_project(json.dumps(payload), payload["sha256"])
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/projects/{project_id}/inspiration/cards")

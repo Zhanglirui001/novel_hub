@@ -252,3 +252,101 @@ UI 产品方向上，我建议下一阶段优先做：
 没有在浏览器里点过仪表盘对话框（当前环境没有可用的浏览器自动化）。恢复 UI 的行为由 API 测试和打包冒烟覆盖。
 
 按你之前的发布顺序，接下来应是：Key 安全存储 → 异常恢复与诊断 → 签名和自动更新。前两项加上现在这两项，可以定义为 0.5 Beta；签名、更新和干净机验收后再进 1.0。
+
+### 重新打包
+
+> 请问后续我修改代码后如何重新打包？直接再运行powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1命令吗？
+
+是的。后续修改完成后，直接在项目根目录执行下面的命令即可重新生成完整的 Tauri 安装包：
+
+```
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1
+```
+
+它会依次：
+
+1. 校验各模块版本是否一致。
+2. 安装/更新 Python 和前端构建依赖。
+3. 用 PyInstaller 重新构建 FastAPI sidecar。
+4. 构建 Next.js 静态前端。
+5. 构建 Tauri 可执行文件及 NSIS、MSI 安装包。
+6. 将安装包复制至 `release\0.3.0\` 并输出 SHA-256。
+
+日常反复打包、且依赖没有变化时，可以节省安装依赖的时间：
+
+```
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1 -SkipDependencyInstall
+```
+
+仅需验证桌面可执行文件，不生成安装包时：
+
+```
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1 -SkipDependencyInstall -SkipInstaller
+```
+
+版本升级时，先同步更新 `web/package.json`、`web/src-tauri/tauri.conf.json` 和项目的发布版本配置；脚本会在构建开始时检查它们是否一致。
+
+
+
+确认了：项目当前没有 `.venv`，所以激活失败是正常的。打包实际使用的是 Conda 的全局 Python：
+
+```
+D:\conda\python.exe
+```
+
+该环境混入了许多不属于项目的包和调试器注入，PyInstaller 在分析这些依赖时卡住。先创建一个隔离的构建环境，再从这个环境构建。
+
+在项目根目录依次执行：
+
+```
+D:\conda\python.exe -m venv .venv
+$env:Path = "$PWD\.venv\Scripts;$env:Path"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1
+```
+
+第三条命令首次运行时会在 `.venv` 内安装项目的 Python 依赖和 PyInstaller，然后构建 sidecar 与 Tauri 安装包。以后重新打包时，仍在同一个终端执行：
+
+```
+$env:Path = "$PWD\.venv\Scripts;$env:Path"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1 -SkipDependencyInstall
+```
+
+这样 `python` 会解析为 `.venv\Scripts\python.exe`，不再扫描 Conda 全局环境
+
+---
+
+Cargo 无法通过 DNS 解析 `index.crates.io`，导致无法下载 Rust 依赖 `cc`，所以 Tauri 构建终止。构建脚本本身执行到了 `web\src-tauri` 的编译阶段，没有发现项目代码错误。
+
+先解决网络/DNS，再重跑。建议按这个顺序检查：
+
+```
+Resolve-DnsName index.crates.io
+Test-NetConnection index.crates.io -Port 443
+```
+
+当 DNS 查询能返回地址、443 端口可连接后，执行：
+
+```
+$env:Path = "$PWD\.venv\Scripts;$env:Path"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1 -SkipDependencyInstall
+```
+
+如果你使用代理，需让 Cargo 走代理。例如本地代理监听 `127.0.0.1:7890` 时，在当前 PowerShell 会话执行：
+
+```
+$env:HTTP_PROXY = "http://127.0.0.1:7890"
+$env:HTTPS_PROXY = "http://127.0.0.1:7890"
+```
+
+然后重新运行打包脚本。不要把上述代理端口照搬，必须替换为你本机代理软件实际开放的 HTTP 代理端口。
+
+
+
+### 测试优化
+
+
+
+
+
+
+

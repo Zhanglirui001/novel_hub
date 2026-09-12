@@ -8,6 +8,8 @@
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
-    "allow-save-backup-file"
+    "allow-save-backup-file",
+    "allow-export-diagnostics",
+    "allow-runtime-config"
   ]
 }

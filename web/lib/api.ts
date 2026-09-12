@@ -55,6 +55,20 @@ import {
   WritingDirective,
 } from "./types";
 
+let desktopToken: string | null = null;
+let desktopTokenPromise: Promise<string | null> | null = null;
+
+async function getDesktopToken() {
+  if (desktopToken) return desktopToken;
+  if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return null;
+  if (!desktopTokenPromise) {
+    desktopTokenPromise = import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke<{ token: string }>("runtime_config"))
+      .then((config) => { desktopToken = config.token; return desktopToken; });
+  }
+  return desktopTokenPromise;
+}
+
 export function getApiBase() {
   const configured = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "");
   if (configured) return configured;
@@ -68,10 +82,12 @@ export function getApiBase() {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = await getDesktopToken();
   const response = await fetch(`${getApiBase()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { "X-Novel-Hub-Token": token } : {}),
       ...init?.headers,
     },
   });
@@ -90,6 +106,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export async function apiHeaders(): Promise<Record<string, string>> {
+  const token = await getDesktopToken();
+  return token ? { "X-Novel-Hub-Token": token } : {};
+}
+
 export const api = {
   health() {
     return request<{ status: string; storage: string }>("/health");
@@ -105,6 +126,15 @@ export const api = {
   },
   getProject(projectId: number) {
     return request<Project>(`/projects/${projectId}`);
+  },
+  updateProject(projectId: number, payload: { name?: string; description?: string }) {
+    return request<Project>(`/projects/${projectId}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+  archiveProject(projectId: number, archived: boolean) {
+    return request<Project>(`/projects/${projectId}/archive?archived=${archived}`, { method: "POST" });
+  },
+  duplicateProject(projectId: number) {
+    return request<{ project_id: number; name: string }>(`/projects/${projectId}/duplicate`, { method: "POST" });
   },
   getDailyCheckin(projectId: number) {
     return request<DailyCheckinSummary>(`/projects/${projectId}/daily-checkin`);
@@ -237,7 +267,7 @@ export const api = {
   ) {
     const response = await fetch(`${getApiBase()}/draft/continue/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await apiHeaders()) },
       body: JSON.stringify(payload),
       signal: handlers.signal,
     });
@@ -367,7 +397,7 @@ export const api = {
   ) {
     const response = await fetch(`${getApiBase()}/chat-sessions/${sessionId}/messages/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await apiHeaders()) },
       body: JSON.stringify(payload),
       signal: handlers.signal,
     });
@@ -505,7 +535,7 @@ export const api = {
   ) {
     const response = await fetch(`${getApiBase()}/projects/${projectId}/inspiration/boards/${boardId}/discussion/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await apiHeaders()) },
       body: JSON.stringify(payload),
       signal: handlers.signal,
     });
@@ -574,7 +604,7 @@ export const api = {
   ) {
     const response = await fetch(`${getApiBase()}/projects/${projectId}/chapters/${chapterId}/mainline/discussion/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await apiHeaders()) },
       body: JSON.stringify(payload),
       signal: handlers.signal,
     });

@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-runtime-config"
+description = "Read the per-session desktop sidecar connection token"
+commands.allow = ["runtime_config"]

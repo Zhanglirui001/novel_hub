@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-export-diagnostics"
+description = "Export local runtime diagnostics through the native save dialog"
+commands.allow = ["export_diagnostics"]

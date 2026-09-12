@@ -271,6 +271,14 @@ def init_db() -> None:
         )
         c.execute(
             """
+            CREATE TABLE IF NOT EXISTS project_lifecycle (
+                project_id INT PRIMARY KEY,
+                archived_at VARCHAR(32) NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        c.execute(
+            """
             CREATE TABLE IF NOT EXISTS chapters (
                 id INT PRIMARY KEY AUTO_INCREMENT,
                 project_id INT NOT NULL,

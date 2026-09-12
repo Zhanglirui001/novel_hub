@@ -31,6 +31,16 @@ export function useCreateProject() {
   });
 }
 
+export function useProjectActions() {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["projects"] });
+  return {
+    rename: useMutation({ mutationFn: ({ projectId, name }: { projectId: number; name: string }) => api.updateProject(projectId, { name }), onSuccess: invalidate }),
+    archive: useMutation({ mutationFn: ({ projectId, archived }: { projectId: number; archived: boolean }) => api.archiveProject(projectId, archived), onSuccess: invalidate }),
+    duplicate: useMutation({ mutationFn: (projectId: number) => api.duplicateProject(projectId), onSuccess: invalidate }),
+  };
+}
+
 export function useProject(projectId: number) {
   return useQuery({
     queryKey: ["project", projectId],

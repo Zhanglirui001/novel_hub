@@ -11,6 +11,11 @@ class ProjectCreate(BaseModel):
     description: str = ""
 
 
+class ProjectUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+
+
 class DailyTodoCreatePayload(BaseModel):
     content: str = Field(max_length=500)
 
