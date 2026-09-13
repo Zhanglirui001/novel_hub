@@ -2206,11 +2206,13 @@ name = "novel-hub"
 version = "0.3.0"
 dependencies = [
  "rfd",
+ "serde",
  "tauri",
  "tauri-build",
  "tauri-plugin-shell",
  "tauri-plugin-single-instance",
  "tempfile",
+ "uuid",
 ]
 
 [[package]]

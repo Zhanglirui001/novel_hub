@@ -1,7 +1,16 @@
+use std::net::TcpListener;
 use std::sync::Mutex;
 
 use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
+
+fn choose_free_port() -> u16 {
+    TcpListener::bind(("127.0.0.1", 0))
+        .expect("failed to allocate a free loopback port")
+        .local_addr()
+        .expect("failed to read allocated loopback port")
+        .port()
+}
 
 struct Sidecar(Mutex<Option<CommandChild>>);
 
@@ -77,7 +86,7 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir)?;
             std::fs::create_dir_all(data_dir.join("backups"))?;
             std::fs::create_dir_all(&logs_dir)?;
-            let runtime_config = RuntimeConfig { port: 17831, token: uuid::Uuid::new_v4().simple().to_string() };
+            let runtime_config = RuntimeConfig { port: choose_free_port(), token: uuid::Uuid::new_v4().simple().to_string() };
 
             let (mut events, child) = app
                 .shell()

@@ -58,10 +58,10 @@ try {
     Push-Location $webRoot
     try {
         if ($SkipInstaller) {
-            & npx.cmd tauri build --no-bundle -- --locked
+            & npx.cmd tauri build --no-bundle -- --offline
         }
         else {
-            & npx.cmd tauri build -- --locked
+            & npx.cmd tauri build -- --offline
         }
         if ($LASTEXITCODE -ne 0) { throw "Tauri build failed." }
     }

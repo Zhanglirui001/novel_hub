@@ -59,6 +59,9 @@ import {
   PromptTemplatePayload,
 } from "./types";
 
+type RuntimeConfig = { port: number; token: string };
+
+let runtimeConfig: RuntimeConfig | null = null;
 let desktopToken: string | null = null;
 let desktopTokenPromise: Promise<string | null> | null = null;
 
@@ -67,8 +70,12 @@ async function getDesktopToken() {
   if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return null;
   if (!desktopTokenPromise) {
     desktopTokenPromise = import("@tauri-apps/api/core")
-      .then(({ invoke }) => invoke<{ token: string }>("runtime_config"))
-      .then((config) => { desktopToken = config.token; return desktopToken; });
+      .then(({ invoke }) => invoke<RuntimeConfig>("runtime_config"))
+      .then((config) => {
+        runtimeConfig = config;
+        desktopToken = config.token;
+        return desktopToken;
+      });
   }
   return desktopTokenPromise;
 }
@@ -76,10 +83,10 @@ async function getDesktopToken() {
 export function getApiBase() {
   const configured = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "");
   if (configured) return configured;
-  // The packaged Tauri shell owns a loopback-only FastAPI sidecar on this port.
+  // The packaged Tauri shell owns a loopback-only FastAPI sidecar on a free port.
   // Browser development keeps using the familiar :8000 backend.
   if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-    return "http://127.0.0.1:17831";
+    return runtimeConfig ? `http://127.0.0.1:${runtimeConfig.port}` : "http://127.0.0.1:17831";
   }
   if (typeof window !== "undefined") return `${window.location.protocol}//${window.location.hostname}:8000`;
   return "http://localhost:8000";
