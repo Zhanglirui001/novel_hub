@@ -11,6 +11,7 @@ import { countChars } from "@/lib/utils";
 import { useAnalyzeSelection, useReviseSelection } from "@/lib/queries";
 import type { InlineAnalyzeResult } from "@/lib/types";
 import { useWorkspace } from "./workspace-context";
+import { PromptTemplatePicker } from "./prompt-template-picker";
 
 const CONTEXT_WINDOW = 300;
 
@@ -179,6 +180,7 @@ export function InlineReviseOverlay() {
             rows={2}
             className="resize-none"
           />
+          <PromptTemplatePicker projectId={projectId} scope="revise" onPick={(content) => setAnnotation((current) => current ? `${content}\n\n${current}` : content)} />
         </div>
 
         <Button

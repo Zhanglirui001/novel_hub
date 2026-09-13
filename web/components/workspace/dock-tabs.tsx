@@ -12,6 +12,7 @@ import {
   ScrollText,
   ShieldCheck,
   Waypoints,
+  NotebookPen,
 } from "lucide-react";
 
 import { ChatPanel } from "./chat-panel";
@@ -24,6 +25,7 @@ import { PlotDiscussionPanel } from "./plot-discussion-panel";
 import { StorylinePanel } from "./storyline-panel";
 import { StylePanel } from "./style-panel";
 import { TimelinePanel } from "./timeline-panel";
+import { FreeNotesPanel } from "./free-notes-panel";
 
 export type DockTab = {
   value: string;
@@ -47,6 +49,7 @@ export const DOCK_TABS: DockTab[] = [
   { value: "style", label: "文风", icon: FileText, Panel: StylePanel },
   { value: "timeline", label: "时间线", icon: Clock, Panel: TimelinePanel },
   { value: "storyline", label: "故事线", icon: Waypoints, Panel: StorylinePanel, fullBleed: true },
+  { value: "free-notes", label: "随心记", icon: NotebookPen, Panel: FreeNotesPanel },
 ];
 
 export function getDockTab(value: string | null): DockTab | undefined {

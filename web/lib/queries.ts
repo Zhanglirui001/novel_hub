@@ -17,10 +17,41 @@ import type {
   InspirationCardPayload,
   InspirationGraphPatch,
   StorylineGraphPatch,
+  FreeNotePayload,
+  PromptTemplatePayload,
 } from "./types";
 
 export function useProjects() {
   return useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
+}
+
+export function useFreeNotes(projectId: number, filters?: { search?: string; noteType?: string }) {
+  return useQuery({ queryKey: ["free-notes", projectId, filters], queryFn: () => api.listFreeNotes(projectId, filters), enabled: Number.isFinite(projectId) });
+}
+
+export function useFreeNoteActions(projectId: number) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["free-notes", projectId] });
+  return {
+    create: useMutation({ mutationFn: (payload: FreeNotePayload) => api.createFreeNote(projectId, payload), onSuccess: invalidate }),
+    update: useMutation({ mutationFn: ({ noteId, payload }: { noteId: number; payload: Partial<FreeNotePayload> }) => api.updateFreeNote(projectId, noteId, payload), onSuccess: invalidate }),
+    remove: useMutation({ mutationFn: (noteId: number) => api.deleteFreeNote(projectId, noteId), onSuccess: invalidate }),
+  };
+}
+
+export function usePromptTemplates(projectId: number, filters?: { search?: string; appliesTo?: string; pinned?: boolean }) {
+  return useQuery({ queryKey: ["prompt-templates", projectId, filters], queryFn: () => api.listPromptTemplates(projectId, filters), enabled: Number.isFinite(projectId) });
+}
+
+export function usePromptTemplateActions(projectId: number) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["prompt-templates", projectId] });
+  return {
+    create: useMutation({ mutationFn: (payload: PromptTemplatePayload) => api.createPromptTemplate(projectId, payload), onSuccess: invalidate }),
+    update: useMutation({ mutationFn: ({ templateId, payload }: { templateId: number; payload: Partial<PromptTemplatePayload> }) => api.updatePromptTemplate(projectId, templateId, payload), onSuccess: invalidate }),
+    remove: useMutation({ mutationFn: (templateId: number) => api.deletePromptTemplate(projectId, templateId), onSuccess: invalidate }),
+    use: useMutation({ mutationFn: (templateId: number) => api.usePromptTemplate(projectId, templateId), onSuccess: invalidate }),
+  };
 }
 
 export function useCreateProject() {

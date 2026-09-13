@@ -11,6 +11,49 @@ export interface Project {
   archived_at: string | null;
 }
 
+export type FreeNoteType = "idea" | "plot" | "character" | "fragment" | "research" | "note";
+export type PromptTemplateScope = "all" | "continue" | "revise";
+
+export interface FreeNote {
+  id: number;
+  project_id: number;
+  note_type: FreeNoteType;
+  title: string;
+  content: string;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FreeNotePayload {
+  note_type?: FreeNoteType;
+  title: string;
+  content: string;
+  tags: string[];
+}
+
+export interface PromptTemplate {
+  id: number;
+  project_id: number;
+  name: string;
+  content: string;
+  applies_to: PromptTemplateScope;
+  tags: string[];
+  is_pinned: boolean;
+  use_count: number;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PromptTemplatePayload {
+  name: string;
+  content: string;
+  applies_to: PromptTemplateScope;
+  tags: string[];
+  is_pinned: boolean;
+}
+
 export interface DailyTodo {
   id: number;
   content: string;

@@ -53,6 +53,10 @@ import {
   MainlineDiscussionEvent,
   TaskType,
   WritingDirective,
+  FreeNote,
+  FreeNotePayload,
+  PromptTemplate,
+  PromptTemplatePayload,
 } from "./types";
 
 let desktopToken: string | null = null;
@@ -135,6 +139,40 @@ export const api = {
   },
   duplicateProject(projectId: number) {
     return request<{ project_id: number; name: string }>(`/projects/${projectId}/duplicate`, { method: "POST" });
+  },
+  listFreeNotes(projectId: number, filters?: { search?: string; noteType?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.search) params.set("search", filters.search);
+    if (filters?.noteType) params.set("note_type", filters.noteType);
+    return request<FreeNote[]>(`/projects/${projectId}/free-notes?${params}`);
+  },
+  createFreeNote(projectId: number, payload: FreeNotePayload) {
+    return request<FreeNote>(`/projects/${projectId}/free-notes`, { method: "POST", body: JSON.stringify(payload) });
+  },
+  updateFreeNote(projectId: number, noteId: number, payload: Partial<FreeNotePayload>) {
+    return request<FreeNote>(`/projects/${projectId}/free-notes/${noteId}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+  deleteFreeNote(projectId: number, noteId: number) {
+    return request<{ id: number; deleted: boolean }>(`/projects/${projectId}/free-notes/${noteId}`, { method: "DELETE" });
+  },
+  listPromptTemplates(projectId: number, filters?: { search?: string; appliesTo?: string; pinned?: boolean }) {
+    const params = new URLSearchParams();
+    if (filters?.search) params.set("search", filters.search);
+    if (filters?.appliesTo) params.set("applies_to", filters.appliesTo);
+    if (filters?.pinned !== undefined) params.set("pinned", String(filters.pinned));
+    return request<PromptTemplate[]>(`/projects/${projectId}/prompt-templates?${params}`);
+  },
+  createPromptTemplate(projectId: number, payload: PromptTemplatePayload) {
+    return request<PromptTemplate>(`/projects/${projectId}/prompt-templates`, { method: "POST", body: JSON.stringify(payload) });
+  },
+  updatePromptTemplate(projectId: number, templateId: number, payload: Partial<PromptTemplatePayload>) {
+    return request<PromptTemplate>(`/projects/${projectId}/prompt-templates/${templateId}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+  deletePromptTemplate(projectId: number, templateId: number) {
+    return request<{ id: number; deleted: boolean }>(`/projects/${projectId}/prompt-templates/${templateId}`, { method: "DELETE" });
+  },
+  usePromptTemplate(projectId: number, templateId: number) {
+    return request<PromptTemplate>(`/projects/${projectId}/prompt-templates/${templateId}/use`, { method: "POST" });
   },
   getDailyCheckin(projectId: number) {
     return request<DailyCheckinSummary>(`/projects/${projectId}/daily-checkin`);

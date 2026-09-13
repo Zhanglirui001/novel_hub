@@ -2,7 +2,7 @@
 from app.database import utc_now
 from app.version import __version__
 
-CURRENT = 2
+CURRENT = 4
 
 
 def _version(cursor) -> int:
@@ -46,4 +46,53 @@ def migrate_v2(conn) -> None:
     )
 
 
-MIGRATIONS = {1: migrate_v1, 2: migrate_v2}
+def migrate_v3(conn) -> None:
+    cursor = conn.cursor()
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS free_notes (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            project_id INT NOT NULL,
+            note_type VARCHAR(32) NOT NULL DEFAULT 'note',
+            title VARCHAR(255) NOT NULL,
+            content MEDIUMTEXT NOT NULL,
+            tags_json TEXT NOT NULL,
+            created_at VARCHAR(32) NOT NULL,
+            updated_at VARCHAR(32) NOT NULL,
+            INDEX idx_free_notes_project_updated(project_id, updated_at, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+    )
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS prompt_templates (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            project_id INT NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            content MEDIUMTEXT NOT NULL,
+            applies_to VARCHAR(32) NOT NULL DEFAULT 'all',
+            tags_json TEXT NOT NULL,
+            is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+            use_count INT NOT NULL DEFAULT 0,
+            last_used_at VARCHAR(32) NULL,
+            created_at VARCHAR(32) NOT NULL,
+            updated_at VARCHAR(32) NOT NULL,
+            INDEX idx_prompt_templates_project_updated(project_id, updated_at, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+    )
+
+
+def migrate_v4(conn) -> None:
+    cursor = conn.cursor()
+    for statement in (
+        "ALTER TABLE free_notes ADD COLUMN note_type VARCHAR(32) NOT NULL DEFAULT 'note'",
+        "ALTER TABLE prompt_templates ADD COLUMN applies_to VARCHAR(32) NOT NULL DEFAULT 'all'",
+        "ALTER TABLE prompt_templates ADD COLUMN is_pinned BOOLEAN NOT NULL DEFAULT FALSE",
+    ):
+        try:
+            cursor.execute(statement)
+        except Exception as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_free_notes_project_type ON free_notes(project_id, note_type, updated_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prompt_templates_project_usage ON prompt_templates(project_id, applies_to, is_pinned, last_used_at)")
+
+
+MIGRATIONS = {1: migrate_v1, 2: migrate_v2, 3: migrate_v3, 4: migrate_v4}

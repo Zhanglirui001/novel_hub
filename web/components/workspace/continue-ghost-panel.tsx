@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useGlobalMainline, useMainline } from "@/lib/queries";
 import { useWorkspace } from "./workspace-context";
+import { PromptTemplatePicker } from "./prompt-template-picker";
 
 // 快捷意图 chip：label 给用户看，value 是喂给意图解析的大白话。
 const INTENT_CHIPS: { label: string; value: string }[] = [
@@ -279,6 +280,7 @@ export function ContinueGhostPanel() {
             }
             className="h-9"
           />
+          <PromptTemplatePicker projectId={projectId} scope="continue" onPick={(content) => setInstruction((current) => current ? `${content}\n\n${current}` : content)} />
           <Button
             size="sm"
             onClick={hasCandidate ? submitRefine : submitFresh}

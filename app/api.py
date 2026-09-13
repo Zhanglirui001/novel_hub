@@ -33,6 +33,10 @@ from app.schemas import (
     InspirationProposalCreatePayload,
     InlineAnalyzePayload,
     InlineRevisePayload,
+    FreeNoteCreatePayload,
+    FreeNoteUpdatePayload,
+    PromptTemplateCreatePayload,
+    PromptTemplateUpdatePayload,
     LlmSettingsPayload,
     LoreImportPayload,
     MainlineDiscussionPayload,
@@ -51,6 +55,7 @@ from app.services.checkin_service import CheckinService
 from app.services.writing_agent import WritingAgent
 from app.services.mainline_service import MainlineService
 from app.services import backup_service, settings_service
+from app.services.free_note_service import FreeNoteService
 
 init_db()
 from app.version import __version__
@@ -90,6 +95,7 @@ storyline_service = StorylineService()
 checkin_service = CheckinService()
 writing_agent = WritingAgent()
 mainline_service = MainlineService()
+free_note_service = FreeNoteService()
 
 
 @app.get("/health", tags=["runtime"])
@@ -200,6 +206,83 @@ def duplicate_project(project_id: int):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _free_note_error(exc: ValueError) -> HTTPException:
+    detail = str(exc)
+    return HTTPException(status_code=404 if "不存在" in detail or "不属于" in detail else 400, detail=detail)
+
+
+@app.get("/projects/{project_id}/free-notes")
+def list_free_notes(project_id: int, search: str = "", tags: str = "", note_type: str = ""):
+    try:
+        return free_note_service.list_items(project_id, "note", search, tags, item_type=note_type)
+    except ValueError as exc:
+        raise _free_note_error(exc) from exc
+
+
+@app.post("/projects/{project_id}/free-notes")
+def create_free_note(project_id: int, payload: FreeNoteCreatePayload):
+    try:
+        return free_note_service.create_item(project_id, "note", payload.model_dump())
+    except ValueError as exc:
+        raise _free_note_error(exc) from exc
+
+
+@app.patch("/projects/{project_id}/free-notes/{note_id}")
+def update_free_note(project_id: int, note_id: int, payload: FreeNoteUpdatePayload):
+    try:
+        return free_note_service.update_item(project_id, "note", note_id, payload.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise _free_note_error(exc) from exc
+
+
+@app.delete("/projects/{project_id}/free-notes/{note_id}")
+def delete_free_note(project_id: int, note_id: int):
+    try:
+        return free_note_service.delete_item(project_id, "note", note_id)
+    except ValueError as exc:
+        raise _free_note_error(exc) from exc
+
+
+@app.get("/projects/{project_id}/prompt-templates")
+def list_prompt_templates(project_id: int, search: str = "", tags: str = "", applies_to: str = "", pinned: bool | None = None):
+    try:
+        return free_note_service.list_items(project_id, "template", search, tags, applies_to=applies_to, pinned=pinned)
+    except ValueError as exc:
+        raise _free_note_error(exc) from exc
+
+
+@app.post("/projects/{project_id}/prompt-templates")
+def create_prompt_template(project_id: int, payload: PromptTemplateCreatePayload):
+    try:
+        return free_note_service.create_item(project_id, "template", payload.model_dump())
+    except ValueError as exc:
+        raise _free_note_error(exc) from exc
+
+
+@app.patch("/projects/{project_id}/prompt-templates/{template_id}")
+def update_prompt_template(project_id: int, template_id: int, payload: PromptTemplateUpdatePayload):
+    try:
+        return free_note_service.update_item(project_id, "template", template_id, payload.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise _free_note_error(exc) from exc
+
+
+@app.delete("/projects/{project_id}/prompt-templates/{template_id}")
+def delete_prompt_template(project_id: int, template_id: int):
+    try:
+        return free_note_service.delete_item(project_id, "template", template_id)
+    except ValueError as exc:
+        raise _free_note_error(exc) from exc
+
+
+@app.post("/projects/{project_id}/prompt-templates/{template_id}/use")
+def use_prompt_template(project_id: int, template_id: int):
+    try:
+        return free_note_service.use_template(project_id, template_id)
+    except ValueError as exc:
+        raise _free_note_error(exc) from exc
 
 
 @app.get("/projects/{project_id}/inspiration/cards")

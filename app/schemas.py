@@ -4,6 +4,40 @@ from pydantic import BaseModel, Field
 
 
 TaskType = Literal["continue", "polish"]
+FreeNoteSort = Literal["updated_at", "created_at", "title"]
+PromptTemplateSort = Literal["updated_at", "created_at", "name", "use_count"]
+FreeNoteType = Literal["idea", "plot", "character", "fragment", "research", "note"]
+PromptTemplateScope = Literal["all", "continue", "revise"]
+
+
+class FreeNoteCreatePayload(BaseModel):
+    note_type: FreeNoteType = "note"
+    title: str = Field(min_length=1, max_length=255)
+    content: str = Field(min_length=1, max_length=200000)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+
+
+class FreeNoteUpdatePayload(BaseModel):
+    note_type: FreeNoteType | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    content: str | None = Field(default=None, min_length=1, max_length=200000)
+    tags: list[str] | None = Field(default=None, max_length=20)
+
+
+class PromptTemplateCreatePayload(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    content: str = Field(min_length=1, max_length=200000)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    applies_to: PromptTemplateScope = "all"
+    is_pinned: bool = False
+
+
+class PromptTemplateUpdatePayload(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    content: str | None = Field(default=None, min_length=1, max_length=200000)
+    tags: list[str] | None = Field(default=None, max_length=20)
+    applies_to: PromptTemplateScope | None = None
+    is_pinned: bool | None = None
 
 
 class ProjectCreate(BaseModel):
