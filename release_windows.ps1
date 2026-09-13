@@ -41,6 +41,21 @@ function Stop-StaleSidecarPort {
     }
 }
 
+function Stop-DesktopProcesses {
+    $names = @('novel-hub', 'novelhub-sidecar')
+    foreach ($name in $names) {
+        Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                Stop-Process -Id $_.Id -Force -ErrorAction Stop
+                Write-Host "Stopped desktop process $($_.ProcessName) (PID $($_.Id))" -ForegroundColor Yellow
+            }
+            catch {
+                Write-Host "Could not stop $($_.ProcessName) (PID $($_.Id)): $($_.Exception.Message)" -ForegroundColor Yellow
+            }
+        }
+    }
+}
+
 if (-not (Get-Command cargo.exe -ErrorAction SilentlyContinue)) {
     throw "Rust stable is required for the Tauri shell. Install it from https://rustup.rs/."
 }
@@ -51,6 +66,7 @@ if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
 Push-Location $root
 try {
     Step "Cleaning stale desktop artifacts"
+    Stop-DesktopProcesses
     if (Test-Path (Join-Path $srcTauriRoot "target")) {
         Push-Location $srcTauriRoot
         try {

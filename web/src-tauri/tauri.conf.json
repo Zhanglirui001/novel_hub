@@ -11,7 +11,7 @@
   },
   "app": {
     "security": {
-      "csp": "default-src 'self' customprotocol: asset:; connect-src 'self' http://127.0.0.1:17831 http://127.0.0.1:8000; img-src 'self' asset: data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self' customprotocol: asset:; connect-src 'self' http://127.0.0.1:* http://localhost:* https://tauri.localhost tauri://localhost; img-src 'self' asset: data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline'"
     },
     "windows": [
       {

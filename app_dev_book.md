@@ -255,6 +255,12 @@ UI 产品方向上，我建议下一阶段优先做：
 
 ### 重新打包
 
+
+
+> powershell -ExecutionPolicy Bypass -File .\release_windows.ps1 -SkipInstaller
+
+
+
 > 请问后续我修改代码后如何重新打包？直接再运行powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1命令吗？
 
 是的。后续修改完成后，直接在项目根目录执行下面的命令即可重新生成完整的 Tauri 安装包：
