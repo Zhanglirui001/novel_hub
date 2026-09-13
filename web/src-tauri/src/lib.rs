@@ -95,14 +95,14 @@ pub fn run() {
                 .env("NOVEL_HUB_IMPORT_LEGACY", if override_dir.is_some() { "0" } else { "1" })
                 .env("NOVEL_HUB_HOST", "127.0.0.1")
                 .env("NOVEL_HUB_PORT", runtime_config.port.to_string())
-                .env("NOVEL_HUB_TOKEN", &runtime_config.token)
+                .env("NOVEL_HUB_TOKEN", if cfg!(debug_assertions) { "" } else { &runtime_config.token })
                 .env("DATABASE_BACKEND", "sqlite")
                 .env("SQLITE_PATH", data_dir.join("novel_hub.db"))
                 .env("BACKUP_DIR", data_dir.join("backups"))
                 .env("NOVEL_HUB_CRASH_LOG", logs_dir.join("sidecar-crash.log"))
                 .env(
                     "CORS_ORIGINS",
-                    "http://tauri.localhost,https://tauri.localhost,tauri://localhost",
+                    "http://localhost:3001,http://127.0.0.1:3001,http://tauri.localhost,https://tauri.localhost,tauri://localhost",
                 )
                 .spawn()?;
 

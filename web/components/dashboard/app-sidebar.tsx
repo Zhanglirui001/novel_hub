@@ -15,8 +15,8 @@ export function AppSidebar() {
       </nav>
       <p className="mb-2 mt-6 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">工作流</p>
       <div className="space-y-1">
-        <div className="flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-muted-foreground"><Sparkles className="size-4" />AI 协作</div>
-        <div className="flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-muted-foreground"><Workflow className="size-4" />故事工程</div>
+        <Link href="/ai" className="flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"><Sparkles className="size-4" />AI 协作</Link>
+        <Link href="/story-engineering" className="flex h-9 items-center gap-3 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"><Workflow className="size-4" />故事工程</Link>
       </div>
       <div className="mt-auto space-y-2">
         <RuntimeStatus />

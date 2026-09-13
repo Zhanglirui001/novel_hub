@@ -181,13 +181,13 @@ function foldGhostStage(prev: GhostStages, event: ContinueStreamEvent): GhostSta
   }
 }
 
-export function WorkspaceProvider({ projectId, children }: { projectId: number; children: React.ReactNode }) {
+export function WorkspaceProvider({ projectId, initialDockTab, children }: { projectId: number; initialDockTab?: string; children: React.ReactNode }) {
   const [draft, setDraft] = React.useState("");
   const [chapterTitle, setChapterTitle] = React.useState("第1章");
   const [chapterGroupTitle, setChapterGroupTitle] = React.useState(DEFAULT_GROUP_TITLE);
   const [activeChapterId, setActiveChapterId] = React.useState<number | null>(null);
   const [lastResult, setLastResult] = React.useState<GenerationResult | null>(null);
-  const [dockTab, setDockTab] = React.useState("create");
+  const [dockTab, setDockTab] = React.useState(initialDockTab || "create");
   const [saveStatus, setSaveStatus] = React.useState<SaveStatus>("idle");
   const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(null);
   const [autosaveEnabled, setAutosaveEnabled] = React.useState(true);

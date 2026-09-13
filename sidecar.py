@@ -47,6 +47,8 @@ def main() -> None:
     if expected_token:
         @app.middleware("http")
         async def require_desktop_token(request, call_next):
+            if request.method == "OPTIONS":
+                return await call_next(request)
             supplied = request.headers.get("x-novel-hub-token", "")
             if not secrets.compare_digest(supplied, expected_token):
                 return JSONResponse({"detail": "本地客户端会话无效，请重新启动 Novel Hub"}, status_code=401)
