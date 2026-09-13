@@ -72,9 +72,16 @@ async function getDesktopToken() {
     desktopTokenPromise = import("@tauri-apps/api/core")
       .then(({ invoke }) => invoke<RuntimeConfig>("runtime_config"))
       .then((config) => {
+        if (!config?.port || !config.token) {
+          throw new Error("桌面端运行时配置无效，请完全退出后重新启动 Novel Hub");
+        }
         runtimeConfig = config;
         desktopToken = config.token;
         return desktopToken;
+      })
+      .catch((error) => {
+        desktopTokenPromise = null;
+        throw error instanceof Error ? error : new Error("无法读取桌面端运行时配置");
       });
   }
   return desktopTokenPromise;
@@ -92,9 +99,19 @@ export function getApiBase() {
   return "http://localhost:8000";
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 8000);
+  try {
+    return await fetch(input, { ...init, signal: init?.signal ?? controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await getDesktopToken();
-  const response = await fetch(`${getApiBase()}${path}`, {
+  const response = await fetchWithTimeout(`${getApiBase()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
