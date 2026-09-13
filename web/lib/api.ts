@@ -87,13 +87,15 @@ async function getDesktopToken() {
   return desktopTokenPromise;
 }
 
-export function getApiBase() {
+export async function getApiBase() {
   const configured = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "");
   if (configured) return configured;
   // The packaged Tauri shell owns a loopback-only FastAPI sidecar on a free port.
   // Browser development keeps using the familiar :8000 backend.
   if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-    return runtimeConfig ? `http://127.0.0.1:${runtimeConfig.port}` : "http://127.0.0.1:17831";
+    await getDesktopToken();
+    if (!runtimeConfig) throw new Error("无法读取桌面端运行时配置，请重新启动 Novel Hub");
+    return `http://127.0.0.1:${runtimeConfig.port}`;
   }
   if (typeof window !== "undefined") return `${window.location.protocol}//${window.location.hostname}:8000`;
   return "http://localhost:8000";
@@ -111,7 +113,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit) {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await getDesktopToken();
-  const response = await fetchWithTimeout(`${getApiBase()}${path}`, {
+  const response = await fetchWithTimeout(`${await getApiBase()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -327,7 +329,7 @@ export const api = {
     payload: ContinueRequest,
     handlers: { onEvent: (event: ContinueStreamEvent) => void; signal?: AbortSignal },
   ) {
-    const response = await fetch(`${getApiBase()}/draft/continue/stream`, {
+    const response = await fetchWithTimeout(`${await getApiBase()}/draft/continue/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await apiHeaders()) },
       body: JSON.stringify(payload),
@@ -457,7 +459,7 @@ export const api = {
     payload: ChatMessageCreateRequest,
     handlers: { onEvent: (event: ChatStreamEvent) => void; signal?: AbortSignal },
   ) {
-    const response = await fetch(`${getApiBase()}/chat-sessions/${sessionId}/messages/stream`, {
+    const response = await fetchWithTimeout(`${await getApiBase()}/chat-sessions/${sessionId}/messages/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await apiHeaders()) },
       body: JSON.stringify(payload),
@@ -595,7 +597,7 @@ export const api = {
     payload: InspirationDiscussionPayload,
     handlers: { onEvent: (event: InspirationDiscussionEvent) => void; signal?: AbortSignal },
   ) {
-    const response = await fetch(`${getApiBase()}/projects/${projectId}/inspiration/boards/${boardId}/discussion/stream`, {
+    const response = await fetchWithTimeout(`${await getApiBase()}/projects/${projectId}/inspiration/boards/${boardId}/discussion/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await apiHeaders()) },
       body: JSON.stringify(payload),
@@ -664,7 +666,7 @@ export const api = {
     payload: MainlineDiscussionPayload,
     handlers: { onEvent: (event: MainlineDiscussionEvent) => void; signal?: AbortSignal },
   ) {
-    const response = await fetch(`${getApiBase()}/projects/${projectId}/chapters/${chapterId}/mainline/discussion/stream`, {
+    const response = await fetchWithTimeout(`${await getApiBase()}/projects/${projectId}/chapters/${chapterId}/mainline/discussion/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await apiHeaders()) },
       body: JSON.stringify(payload),
