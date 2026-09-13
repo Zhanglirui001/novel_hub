@@ -46,6 +46,9 @@ type GraphSnapshot = {
 
 export function InspirationStudio({ projectId, projectTitle }: InspirationStudioProps) {
   const [search, setSearch] = useState("");
+  const [cardType, setCardType] = useState("all");
+  const [viewMode, setViewMode] = useState<"canvas" | "list">("canvas");
+  const [inboxSelection, setInboxSelection] = useState<number[]>([]);
   const [boardId, setBoardId] = useState<number | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedCard, setSelectedCard] = useState<InspirationCard | null>(null);
@@ -56,9 +59,12 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
   const [discussing, setDiscussing] = useState(false);
   const [proposal, setProposal] = useState<InspirationProposal | null>(null);
   const [notice, setNotice] = useState("");
+  const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty" | "error">("saved");
+  const addCardsRef = useRef<(cards: InspirationCard[]) => void>(() => {});
   const pendingGraphRef = useRef<GraphSnapshot | null>(null);
   const persistedGraphRef = useRef<InspirationBoardGraph | null>(null);
   const savingGraphRef = useRef(false);
+  const saveTimerRef = useRef<number | null>(null);
   const boardKeyRef = useRef<string | null>(null);
 
   const cardsQuery = useInspirationCards(projectId, { search });
@@ -91,6 +97,9 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
   const cards = cardsQuery.data || [];
   const boards = boardsQuery.data || [];
   const graph = boardQuery.data;
+  const boardCardIds = useMemo(() => new Set((graph?.nodes ?? []).map((node) => node.card_id).filter((id): id is number => typeof id === "number")), [graph]);
+  const visibleCards = useMemo(() => cards.filter((card) => cardType === "all" || card.card_type === cardType), [cardType, cards]);
+  const registerAddCards = useCallback((addCards: (cards: InspirationCard[]) => void) => { addCardsRef.current = addCards; }, []);
   const selectedCardIds = useMemo(() => {
     if (!graph) return [];
     return graph.nodes.filter((node) => selectedNodeIds.includes(node.id) && node.card_id).map((node) => node.card_id as number);
@@ -119,6 +128,7 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
 
   useEffect(() => () => {
     pendingGraphRef.current = null;
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
   }, []);
 
   const flushGraphSave = useCallback(async () => {
@@ -130,6 +140,7 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
     savingGraphRef.current = true;
 
     try {
+      setSaveState("saving");
       const savedGraph = await patchGraph.mutateAsync({
         expected_graph_version: persistedGraph.graph_version,
         viewport: snapshot.viewport,
@@ -139,8 +150,10 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
         deleted_edge_ids: persistedGraph.edges.filter((edge) => !snapshot.edges.some((next) => next.id === edge.id)).map((edge) => edge.id),
       });
       persistedGraphRef.current = savedGraph;
+      setSaveState("saved");
     } catch (error) {
       pendingGraphRef.current = null;
+      setSaveState("error");
       setNotice(error instanceof Error ? "画板已有更新，已保留服务端版本" : "画板保存失败");
       await boardQuery.refetch();
     } finally {
@@ -151,7 +164,9 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
 
   const saveGraph = useCallback((nodes: InspirationBoardNode[], edges: InspirationBoardEdge[], viewport: InspirationViewport) => {
     pendingGraphRef.current = { nodes, edges, viewport };
-    void flushGraphSave();
+    setSaveState("dirty");
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => { saveTimerRef.current = null; void flushGraphSave(); }, 650);
   }, [flushGraphSave]);
 
   const openCreateCard = () => {
@@ -189,12 +204,11 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
     }
   };
 
-  const sendDiscussion = async () => {
-    if (!graph || !discussion.trim() || discussing) return;
-    const text = discussion.trim();
+  const sendDiscussionText = async (text: string) => {
+    if (!graph || !text.trim() || discussing) return;
     setDiscussion("");
     setDiscussing(true);
-    setMessages((current) => [...current, { role: "user", content: text }, { role: "assistant", content: "" }]);
+    setMessages((current) => [...current, { role: "user", content: text.trim() }, { role: "assistant", content: "" }]);
     try {
       await api.streamInspirationDiscussion(projectId, graph.id, { content: text, selected_node_ids: selectedNodeIds }, {
         onEvent: (event) => {
@@ -209,6 +223,13 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
     } finally {
       setDiscussing(false);
     }
+  };
+
+  const sendDiscussion = () => { void sendDiscussionText(discussion); };
+
+  const runQuickAction = (instruction: string) => {
+    if (!selectedNodeIds.length || discussing) return;
+    void sendDiscussionText(instruction);
   };
 
   const createProposal = async () => {
@@ -269,13 +290,15 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
       <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
         <aside className="flex min-h-0 flex-col border-r border-zinc-200 bg-white">
           <div className="space-y-2 border-b border-zinc-200 p-3">
-            <div className="flex items-center justify-between"><p className="text-sm font-semibold">灵感卡片</p><Button size="icon" variant="ghost" aria-label="新建灵感卡片" onClick={openCreateCard}><FilePlus2 className="size-4" /></Button></div>
+            <div className="flex items-center justify-between"><div><p className="text-sm font-semibold">灵感收件箱</p><p className="mt-0.5 text-[10px] text-zinc-500">{cards.length} 张卡片 · {boardCardIds.size} 张已上板</p></div><Button size="icon" variant="ghost" aria-label="新建灵感卡片" onClick={openCreateCard}><FilePlus2 className="size-4" /></Button></div>
             <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索标题、正文或标签" className="h-8 text-xs" />
+            <div className="flex gap-1"><select aria-label="按类型筛选" value={cardType} onChange={(event) => setCardType(event.target.value)} className="h-8 min-w-0 flex-1 border border-zinc-300 bg-white px-2 text-xs"><option value="all">全部类型</option>{cardTypes.map((type) => <option key={type}>{type}</option>)}</select><div className="flex border border-zinc-300"><button type="button" className={`px-2 text-[11px] ${viewMode === "canvas" ? "bg-zinc-900 text-white" : "text-zinc-600"}`} onClick={() => setViewMode("canvas")}>画布</button><button type="button" className={`px-2 text-[11px] ${viewMode === "list" ? "bg-zinc-900 text-white" : "text-zinc-600"}`} onClick={() => setViewMode("list")}>列表</button></div></div>
+            {inboxSelection.length ? <Button size="sm" className="h-8 w-full text-xs" onClick={() => { addCardsRef.current(visibleCards.filter((card) => inboxSelection.includes(card.id))); setInboxSelection([]); }}>将 {inboxSelection.length} 张卡片加入画板</Button> : null}
           </div>
           <ScrollArea className="min-h-0 flex-1">
             <div className="space-y-2 p-3">
               {cardsQuery.isLoading ? <p className="text-xs text-zinc-500">加载中...</p> : null}
-              {cards.map((card) => (
+              {visibleCards.map((card) => (
                 <button
                   key={card.id}
                   type="button"
@@ -287,7 +310,7 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
                   }}
                   onClick={() => openEditCard(card)}
                 >
-                  <div className="mb-1 flex justify-between gap-2"><span className="text-[11px] uppercase text-teal-700">{card.card_type}</span><span className="text-[11px] text-zinc-400">{card.origin === "ai" ? "AI" : ""}</span></div>
+                  <div className="mb-1 flex items-center justify-between gap-2"><label className="flex items-center gap-1 text-[11px] text-zinc-500" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={inboxSelection.includes(card.id)} onChange={() => setInboxSelection((current) => current.includes(card.id) ? current.filter((id) => id !== card.id) : [...current, card.id])} />选择</label><span className="text-[11px] uppercase text-teal-700">{card.card_type}</span><span className="text-[11px] text-zinc-400">{boardCardIds.has(card.id) ? "已上板" : card.origin === "ai" ? "AI" : "收件箱"}</span></div>
                   <p className="line-clamp-1 text-sm font-medium">{card.title}</p>
                   <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500">{card.content || "暂无正文"}</p>
                 </button>
@@ -299,12 +322,12 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
 
         <section className="relative min-h-[520px] min-w-0">
           {!boards.length ? <div className="flex h-full flex-col items-center justify-center gap-3 bg-zinc-50"><Network className="size-8 text-zinc-400" /><p className="text-sm text-zinc-600">先创建一张画板，组织你的剧情线索。</p><Button onClick={createNewBoard}>创建第一张画板</Button></div> : null}
-          {graph ? <BoardCanvas graph={graph} cards={cards} selectedNodeIds={selectedNodeIds} onSelectedNodeIdsChange={setSelectedNodeIds} onGraphChange={saveGraph} /> : boards.length ? <div className="flex h-full items-center justify-center text-sm text-zinc-500"><Loader2 className="mr-2 size-4 animate-spin" />加载画板...</div> : null}
+          {graph && viewMode === "canvas" ? <BoardCanvas graph={graph} cards={cards} selectedNodeIds={selectedNodeIds} onSelectedNodeIdsChange={setSelectedNodeIds} onGraphChange={saveGraph} onOpenCard={openEditCard} onAddCardsReady={registerAddCards} saveState={saveState} /> : graph ? <div className="h-full overflow-auto bg-zinc-50 p-6"><div className="mx-auto max-w-3xl space-y-2">{visibleCards.map((card) => <button key={card.id} type="button" onDoubleClick={() => openEditCard(card)} className="flex w-full items-start justify-between gap-4 border bg-white p-4 text-left hover:border-teal-500"><div><p className="text-sm font-semibold">{card.title}</p><p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500">{card.content || "暂无正文"}</p></div><span className="shrink-0 text-[11px] text-zinc-400">{boardCardIds.has(card.id) ? "已上板" : "收件箱"}</span></button>)}</div></div> : boards.length ? <div className="flex h-full items-center justify-center text-sm text-zinc-500"><Loader2 className="mr-2 size-4 animate-spin" />加载画板...</div> : null}
         </section>
 
         <aside className="flex min-h-0 flex-col border-l border-zinc-200 bg-white">
           <div className="border-b border-zinc-200 p-3"><p className="text-sm font-semibold">检查器与讨论</p><p className="mt-1 text-xs text-zinc-500">选中卡片后，AI 会获得当前节点和关系上下文。</p></div>
-          {selectedCard ? <div className="border-b border-zinc-200 p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-xs text-teal-700">{selectedCard.card_type}</p><p className="mt-1 text-sm font-medium">{selectedCard.title}</p></div><Button size="icon" variant="ghost" aria-label="编辑卡片" onClick={() => openEditCard(selectedCard)}><FilePlus2 className="size-4" /></Button></div><p className="mt-2 line-clamp-4 whitespace-pre-wrap text-xs leading-5 text-zinc-600">{selectedCard.content}</p><Button size="sm" variant="outline" className="mt-2 w-full" disabled={saveGlobalMainline.isPending} onClick={() => sendCardToGlobalMainline(selectedCard)}><Network className="mr-1 size-3.5" />发送到全书主线</Button></div> : null}
+          {selectedCard ? <div className="border-b border-zinc-200 p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-xs text-teal-700">{selectedCard.card_type}</p><p className="mt-1 text-sm font-medium">{selectedCard.title}</p></div><Button size="icon" variant="ghost" aria-label="编辑卡片" onClick={() => openEditCard(selectedCard)}><FilePlus2 className="size-4" /></Button></div><p className="mt-2 line-clamp-4 whitespace-pre-wrap text-xs leading-5 text-zinc-600">{selectedCard.content}</p><div className="mt-2 grid grid-cols-2 gap-1"><Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={discussing} onClick={() => runQuickAction(`请分析「${selectedCard.title}」的核心冲突、阻力和升级路径。`)}>提炼冲突</Button><Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={discussing} onClick={() => runQuickAction(`请围绕「${selectedCard.title}」提出三个可写成场景的方向，并说明各自的戏剧价值。`)}>生成场景</Button><Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={discussing} onClick={() => runQuickAction(`请检查当前选中灵感之间可能存在的矛盾、断点或缺失信息。`)}>检查矛盾</Button><Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" disabled={discussing} onClick={() => runQuickAction(`请从当前选中灵感中提取值得长期维护的角色动机或世界规则。`)}>提取设定</Button></div><Button size="sm" variant="outline" className="mt-2 w-full" disabled={saveGlobalMainline.isPending} onClick={() => sendCardToGlobalMainline(selectedCard)}><Network className="mr-1 size-3.5" />发送到全书主线</Button></div> : null}
           <ScrollArea className="min-h-0 flex-1">
             <div className="space-y-3 p-3">
               {messages.length ? messages.map((message, index) => <div key={`${message.role}-${index}`} className={`whitespace-pre-wrap border p-3 text-xs leading-5 ${message.role === "user" ? "border-teal-200 bg-teal-50 text-teal-950" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>{message.content || <Loader2 className="size-3 animate-spin" />}</div>) : <div className="border border-dashed border-zinc-300 p-4 text-xs leading-5 text-zinc-500"><Sparkles className="mb-2 size-4 text-teal-700" />从冲突、转折、人物动机或伏笔开始讨论。选择画板节点可让讨论聚焦。</div>}

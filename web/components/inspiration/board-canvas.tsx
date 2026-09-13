@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { LocateFixed, Redo2, Trash2, Undo2 } from "lucide-react";
 import {
   addEdge,
   Background,
@@ -95,13 +95,20 @@ interface BoardCanvasProps {
   selectedNodeIds: string[];
   onSelectedNodeIdsChange: (ids: string[]) => void;
   onGraphChange: (nodes: InspirationBoardNode[], edges: InspirationBoardEdge[], viewport: InspirationViewport) => void;
+  onOpenCard: (card: InspirationCard) => void;
+  onAddCardsReady: (addCards: (cards: InspirationCard[]) => void) => void;
+  saveState: "saved" | "saving" | "dirty" | "error";
 }
 
-export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsChange, onGraphChange }: BoardCanvasProps) {
+type HistorySnapshot = { nodes: Node<CanvasNodeData>[]; edges: Edge<CanvasEdgeData>[] };
+
+export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsChange, onGraphChange, onOpenCard, onAddCardsReady, saveState }: BoardCanvasProps) {
   const [nodes, setNodes] = useState<Node<CanvasNodeData>[]>([]);
   const [edges, setEdges] = useState<Edge<CanvasEdgeData>[]>([]);
   const flowRef = useRef<ReactFlowInstance<Node<CanvasNodeData>, Edge<CanvasEdgeData>> | null>(null);
   const cardsById = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
+  const undoRef = useRef<HistorySnapshot[]>([]);
+  const redoRef = useRef<HistorySnapshot[]>([]);
 
   useEffect(() => {
     setNodes(toFlowNodes(graph.nodes, cards));
@@ -138,18 +145,55 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
     onGraphChange(savedNodes, savedEdges, viewport);
   }, [graph, onGraphChange]);
 
+  const recordHistory = useCallback(() => {
+    undoRef.current = [...undoRef.current.slice(-49), { nodes, edges }];
+    redoRef.current = [];
+  }, [edges, nodes]);
+
+  const restore = useCallback((snapshot: HistorySnapshot) => {
+    setNodes(snapshot.nodes);
+    setEdges(snapshot.edges);
+    emit(snapshot.nodes, snapshot.edges);
+  }, [emit]);
+
+  const undo = useCallback(() => {
+    const previous = undoRef.current.pop();
+    if (!previous) return;
+    redoRef.current.push({ nodes, edges });
+    restore(previous);
+  }, [edges, nodes, restore]);
+
+  const redo = useCallback(() => {
+    const next = redoRef.current.pop();
+    if (!next) return;
+    undoRef.current.push({ nodes, edges });
+    restore(next);
+  }, [edges, nodes, restore]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable='true']")) return;
+      event.preventDefault();
+      if (event.shiftKey) redo(); else undo();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [redo, undo]);
+
   const onNodesChange: OnNodesChange = (changes) => {
     const next = applyNodeChanges(changes, nodes);
     setNodes(next);
 
     if (changes.some((change) => change.type === "select")) onSelectedNodeIdsChange(next.filter((node) => node.selected).map((node) => node.id));
-    if (changes.some((change) => change.type === "position" && !change.dragging) || changes.some((change) => change.type === "remove")) emit(next, edges);
+    if (changes.some((change) => change.type === "position" && change.dragging === false) || changes.some((change) => change.type === "remove")) { recordHistory(); emit(next, edges); }
   };
 
   const onEdgesChange: OnEdgesChange<Edge<CanvasEdgeData>> = (changes) => {
     const next = applyEdgeChanges(changes, edges);
     setEdges(next);
-    if (changes.some((change) => change.type === "remove")) emit(nodes, next);
+    if (changes.some((change) => change.type === "remove")) { recordHistory(); emit(nodes, next); }
   };
 
   const isValidConnection: IsValidConnection<Edge<CanvasEdgeData>> = useCallback((connection) => {
@@ -176,6 +220,7 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
 
   const onConnect: OnConnect = (connection: Connection) => {
     if (!isValidConnection(connection)) return;
+    recordHistory();
     const next = addEdge({
       ...connection,
       id: `edge-${crypto.randomUUID()}`,
@@ -191,6 +236,7 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
 
   const onReconnect: OnReconnect<Edge<CanvasEdgeData>> = (oldEdge, connection) => {
     if (!canReconnect(oldEdge, connection)) return;
+    recordHistory();
     const reconnectedEdge = reconnectEdge(oldEdge, connection, edges, { shouldReplaceId: false });
     const next = reconnectedEdge.map((edge) => edge.id === oldEdge.id ? {
       ...edge,
@@ -206,6 +252,7 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
   };
 
   const deleteEdge = (edgeId: string) => {
+    recordHistory();
     const next = edges.filter((edge) => edge.id !== edgeId);
     setEdges(next);
     emit(nodes, next);
@@ -231,19 +278,38 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
   }), [edges, nodes]);
 
   const addCardNode = (card: InspirationCard, position?: { x: number; y: number }) => {
+    recordHistory();
     const next = [...nodes, {
       id: `card-${card.id}-${crypto.randomUUID()}`,
       type: "inspirationCard",
-      position: position || { x: 100 + nodes.length * 24, y: 90 + nodes.length * 24 },
+      position: position || flowRef.current?.screenToFlowPosition({ x: (flowRef.current?.getViewport().x ?? 0) + 420, y: (flowRef.current?.getViewport().y ?? 0) + 260 }) || { x: 120, y: 120 },
       data: { card },
     }];
     setNodes(next);
     emit(next, edges);
   };
 
+  const addCards = useCallback((newCards: InspirationCard[]) => {
+    if (!newCards.length) return;
+    recordHistory();
+    const origin = flowRef.current?.screenToFlowPosition({ x: 460, y: 300 }) || { x: 120, y: 120 };
+    const additions = newCards.map((card, index) => ({
+      id: `card-${card.id}-${crypto.randomUUID()}`,
+      type: "inspirationCard",
+      position: { x: origin.x + (index % 3) * 280, y: origin.y + Math.floor(index / 3) * 190 },
+      data: { card },
+    }));
+    const next = [...nodes, ...additions];
+    setNodes(next);
+    emit(next, edges);
+  }, [edges, emit, nodes, recordHistory]);
+
+  useEffect(() => { onAddCardsReady(addCards); }, [addCards, onAddCardsReady]);
+
   const addQuickNode = (nodeType: "annotation" | "event" | "character") => {
     const title = window.prompt(nodeType === "event" ? "事件名称" : nodeType === "character" ? "角色名称" : "注释内容");
     if (!title?.trim()) return;
+    recordHistory();
     const next = [...nodes, {
       id: `${nodeType}-${crypto.randomUUID()}`,
       type: nodeType === "annotation" ? "inspirationCard" : "quickNode",
@@ -266,6 +332,12 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
       }}
     >
       <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-2">
+        <div className="flex items-center gap-1 border border-zinc-300 bg-white px-1 shadow-sm">
+          <button type="button" className="grid size-7 place-items-center text-zinc-600 hover:bg-zinc-100 disabled:opacity-40" aria-label="撤销" title="撤销 Ctrl/Cmd+Z" disabled={!undoRef.current.length} onClick={undo}><Undo2 className="size-3.5" /></button>
+          <button type="button" className="grid size-7 place-items-center text-zinc-600 hover:bg-zinc-100 disabled:opacity-40" aria-label="重做" title="重做 Ctrl/Cmd+Shift+Z" disabled={!redoRef.current.length} onClick={redo}><Redo2 className="size-3.5" /></button>
+          <button type="button" className="grid size-7 place-items-center text-zinc-600 hover:bg-zinc-100 disabled:opacity-40" aria-label="定位选中节点" title="定位选中节点" disabled={!selectedNodeIds.length} onClick={() => flowRef.current?.fitView({ nodes: selectedNodeIds.map((id) => ({ id })), padding: 0.3, duration: 300 })}><LocateFixed className="size-3.5" /></button>
+          <span className="px-2 text-[11px] text-zinc-500">{saveState === "saving" ? "正在保存" : saveState === "dirty" ? "有未保存修改" : saveState === "error" ? "保存失败" : "已保存"}</span>
+        </div>
         <select
           aria-label="添加灵感卡片至画板"
           className="h-8 max-w-52 border border-zinc-300 bg-white px-2 text-xs"
@@ -289,6 +361,7 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDoubleClick={(_, node) => { const card = node.data.card; if (card) onOpenCard(card); }}
         onConnect={onConnect}
         onReconnect={onReconnect}
         edgesReconnectable
