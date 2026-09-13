@@ -111,7 +111,7 @@ interface WorkspaceState {
   ghostCandidates: GhostCandidate[];
   activeGhostId: string | null;
   ghostLiveText: string;
-  startGhost: () => void;
+  startGhost: (mode?: "inherit" | "custom") => void;
   runContinue: (instruction: string, opts?: { directive?: WritingDirective | null; mainline?: string; useGlobalMainline?: boolean }) => void;
   setActiveGhost: (id: string) => void;
   acceptGhost: () => void;
@@ -225,6 +225,7 @@ export function WorkspaceProvider({ projectId, initialDockTab, children }: { pro
   const ghostSeq = React.useRef(0);
   const ghostAbortRef = React.useRef<AbortController | null>(null);
   const ghostAnchorRef = React.useRef<number | null>(null);
+  const ghostOpeningModeRef = React.useRef<"inherit" | "custom">("inherit");
   const ghostStreamingRef = React.useRef(false);
   const ghostCandidatesRef = React.useRef<GhostCandidate[]>([]);
   const activeGhostIdRef = React.useRef<string | null>(null);
@@ -529,14 +530,16 @@ export function WorkspaceProvider({ projectId, initialDockTab, children }: { pro
     setGhostCandidates([]);
     setActiveGhostId(null);
     setGhostLiveText("");
+    ghostOpeningModeRef.current = "inherit";
   }, []);
 
-  const startGhost = React.useCallback(() => {
+  const startGhost = React.useCallback((mode: "inherit" | "custom" = "inherit") => {
     const el = editorRef.current;
     const caret = el ? el.selectionStart ?? draftRef.current.length : draftRef.current.length;
     ghostAbortRef.current?.abort();
     ghostAbortRef.current = null;
     ghostAnchorRef.current = caret; // 同步置位，便于同一 tick 内紧接着调用 runContinue（如「据此起笔」）
+    ghostOpeningModeRef.current = mode;
     setGhostAnchor(caret);
     setGhostStreaming(false);
     setGhostStages({});
@@ -561,9 +564,11 @@ export function WorkspaceProvider({ projectId, initialDockTab, children }: { pro
       const useGlobalMainline = opts?.useGlobalMainline ?? true;
 
       // 解析续写素材：光标前有正文 → 段中续写；空章节 → 起笔，承接上一章结尾。
-      const resolveSource = async (): Promise<{ tail: string; mode: "continue" | "opening" } | null> => {
+      const resolveSource = async (): Promise<{ tail: string; mode: "continue" | "opening" }> => {
         const tail = draftRef.current.slice(0, anchor);
         if (tail.trim()) return { tail, mode: "continue" };
+
+        if (ghostOpeningModeRef.current === "custom") return { tail: "", mode: "opening" };
 
         // 空章节：找上一章末尾作为起笔素材。
         const currentId = chapterIdRef.current;
@@ -585,9 +590,7 @@ export function WorkspaceProvider({ projectId, initialDockTab, children }: { pro
             }
           }
         }
-        // 无上一章正文，但有主线也可起笔。
-        if (mainline) return { tail: "", mode: "opening" };
-        return null;
+        return { tail: "", mode: "opening" };
       };
 
       setGhostStreaming(true);
@@ -602,12 +605,6 @@ export function WorkspaceProvider({ projectId, initialDockTab, children }: { pro
 
       resolveSource()
         .then((source) => {
-          if (!source) {
-            toast.error("光标前没有正文，且未找到上一章可承接");
-            setGhostStreaming(false);
-            ghostAbortRef.current = null;
-            return;
-          }
           return api
             .streamContinue(
               {

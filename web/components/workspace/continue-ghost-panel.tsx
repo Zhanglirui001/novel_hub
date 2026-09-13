@@ -96,16 +96,41 @@ export function ContinueGhostPanel() {
   // 未进入续写：显示悬浮触发按钮（选中文字时让位给内联批注浮层）。
   if (ghostAnchor === null) {
     if (selection && selection.text.trim()) return null;
+    if (isOpening) {
+      return (
+        <div className="pointer-events-none sticky bottom-4 flex justify-center gap-2">
+          <Button
+            size="sm"
+            onClick={() => startGhost("inherit")}
+            className="pointer-events-auto shadow-lg"
+            title="承接上一章结尾，为本章起笔"
+          >
+            <Sparkles className="h-4 w-4" />
+            承接上章
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => startGhost("custom")}
+            className="pointer-events-auto bg-background shadow-lg"
+            title="忽略上一章，从自定义要求开始本章"
+          >
+            <Sparkles className="h-4 w-4" />
+            自定义开头
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="pointer-events-none sticky bottom-4 flex justify-center">
         <Button
           size="sm"
-          onClick={startGhost}
+          onClick={() => startGhost("inherit")}
           className="pointer-events-auto shadow-lg"
-          title={isOpening ? "承接上一章结尾，为新章节起笔" : "在光标处续写下一段（幽灵预览）"}
+          title={isOpening ? "输入要求，自定义本章开头" : "在光标处续写下一段（幽灵预览）"}
         >
           <Sparkles className="h-4 w-4" />
-          {isOpening ? "起笔（承接上章）" : "续写下一段"}
+          续写下一段
         </Button>
       </div>
     );
