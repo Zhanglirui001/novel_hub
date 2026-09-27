@@ -280,6 +280,24 @@ class ChatService:
 
         return _generate()
 
+    def clear_session(self, session_id: int) -> dict:
+        self._ensure_session(session_id)
+        now = utc_now()
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM chat_messages WHERE session_id = %s", (session_id,))
+            c.execute("UPDATE chat_sessions SET updated_at = %s WHERE id = %s", (now, session_id))
+        return {"session_id": session_id, "cleared": True, "updated_at": now}
+
+    def delete_session(self, session_id: int) -> dict:
+        self._ensure_session(session_id)
+        now = utc_now()
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM chat_messages WHERE session_id = %s", (session_id,))
+            c.execute("DELETE FROM chat_sessions WHERE id = %s", (session_id,))
+        return {"session_id": session_id, "deleted": True, "updated_at": now}
+
     def _persist_exchange(self, session: dict, user_text: str, assistant_content: str, context: dict) -> dict:
         """将一轮用户/助手消息写库并返回与 send_message 一致的结果结构。"""
         session_id = session["id"]
@@ -339,13 +357,6 @@ class ChatService:
             },
             "messages": [user_message, assistant_message],
         }
-        self._ensure_session(session_id)
-        now = utc_now()
-        with get_conn() as conn:
-            c = conn.cursor()
-            c.execute("DELETE FROM chat_messages WHERE session_id = %s", (session_id,))
-            c.execute("UPDATE chat_sessions SET updated_at = %s WHERE id = %s", (now, session_id))
-        return {"session_id": session_id, "cleared": True, "updated_at": now}
 
     def _ensure_session(self, session_id: int) -> dict:
         with get_conn() as conn:

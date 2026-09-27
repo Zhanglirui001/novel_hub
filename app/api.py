@@ -779,7 +779,18 @@ def stream_chat_message(session_id: int, payload: ChatMessageCreatePayload):
 
 @app.post("/chat-sessions/{session_id}/clear")
 def clear_chat_session(session_id: int):
-    return chat_service.clear_session(session_id)
+    try:
+        return chat_service.clear_session(session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/chat-sessions/{session_id}")
+def delete_chat_session(session_id: int):
+    try:
+        return chat_service.delete_session(session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/chapters/{chapter_id}/backup")

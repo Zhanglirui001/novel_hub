@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, Expand, MessageSquare, Plus, RotateCcw, Send } from "lucide-react";
+import { Check, Copy, Expand, MessageSquare, Plus, RotateCcw, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,7 @@ export function ChatPanel({ fullscreen = false }: { fullscreen?: boolean }) {
     createChatSession,
     selectChatSession,
     sendChatMessage,
+    deleteChatSession,
     chatStreaming,
     streamingContent,
     clearChat,
@@ -104,22 +105,39 @@ export function ChatPanel({ fullscreen = false }: { fullscreen?: boolean }) {
             </div>
           ) : null}
           {chatSessions.map((session) => (
-            <button
+            <div
               key={session.id}
               className={cn(
-                "w-full rounded-md border px-3 py-2 text-left transition-colors",
+                "flex w-full items-start gap-2 rounded-md border px-3 py-2 transition-colors",
                 session.id === activeChatSessionId ? "border-primary bg-primary/5" : "hover:bg-muted/50",
               )}
-              onClick={() => selectChatSession(session.id)}
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0 truncate text-sm font-medium">{session.title}</div>
-                <div className="shrink-0 text-[0.7rem] text-muted-foreground">{session.messageCount}</div>
-              </div>
-              <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                {session.lastMessagePreview || "暂无消息"}
-              </div>
-            </button>
+              <button
+                className="min-w-0 flex-1 text-left"
+                onClick={() => selectChatSession(session.id)}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 truncate text-sm font-medium">{session.title}</div>
+                  <div className="shrink-0 text-[0.7rem] text-muted-foreground">{session.messageCount}</div>
+                </div>
+                <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                  {session.lastMessagePreview || "暂无消息"}
+                </div>
+              </button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                aria-label={`删除会话 ${session.title}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteChatSession(session.id);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           ))}
         </div>
       </ScrollArea>

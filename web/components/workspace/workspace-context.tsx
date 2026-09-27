@@ -11,6 +11,7 @@ import {
   useChatSessions,
   useClearChatSession,
   useCreateChatSession,
+  useDeleteChatSession,
   useDeleteChapter,
   useMoveChapter,
   useProject,
@@ -130,6 +131,7 @@ interface WorkspaceState {
   createChatSession: (title?: string) => number;
   selectChatSession: (id: number) => void;
   sendChatMessage: (content: string) => void;
+  deleteChatSession: (sessionId: number) => void;
   chatStreaming: boolean;
   streamingContent: string;
   clearChat: () => void;
@@ -247,6 +249,7 @@ export function WorkspaceProvider({ projectId, initialDockTab, children }: { pro
   const chatSessionsQuery = useChatSessions(projectId);
   const chatMessagesQuery = useChatMessages(activeChatSessionId);
   const clearChatSessionMutation = useClearChatSession(projectId, activeChatSessionId);
+  const deleteChatSessionMutation = useDeleteChatSession(projectId);
   const queryClient = useQueryClient();
   useProjects();
   useProject(projectId);
@@ -484,6 +487,22 @@ export function WorkspaceProvider({ projectId, initialDockTab, children }: { pro
       onError: (error) => toast.error(error instanceof Error ? error.message : "清空失败"),
     });
   }, [activeChatSessionId, clearChatSessionMutation]);
+
+  const deleteChatSession = React.useCallback((sessionId: number) => {
+    deleteChatSessionMutation.mutate(sessionId, {
+      onSuccess: () => {
+        setChatDraft("");
+        setActiveChatSessionId((current) => {
+          if (current !== sessionId) return current;
+          const remaining = chatSessions.filter((session) => session.id !== sessionId);
+          return remaining.length > 0 ? remaining[0].id : null;
+        });
+        queryClient.setQueryData(["chat-messages", sessionId], []);
+        toast.success("已删除当前会话");
+      },
+      onError: (error) => toast.error(error instanceof Error ? error.message : "删除会话失败"),
+    });
+  }, [chatSessions, deleteChatSessionMutation, queryClient]);
 
   const saveRunningRef = React.useRef(false);
   const saveNow = React.useCallback(async () => {
@@ -795,6 +814,7 @@ export function WorkspaceProvider({ projectId, initialDockTab, children }: { pro
     createChatSession,
     selectChatSession,
     sendChatMessage,
+    deleteChatSession,
     chatStreaming,
     streamingContent,
     clearChat,

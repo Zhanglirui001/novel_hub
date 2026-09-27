@@ -512,6 +512,11 @@ export const api = {
       method: 'POST',
     });
   },
+  deleteChatSession(sessionId: number) {
+    return request<{ session_id: number; deleted: boolean; updated_at: string }>(`/chat-sessions/${sessionId}`, {
+      method: 'DELETE',
+    });
+  },
   listInspirationCards(projectId: number, filters?: { search?: string; cardType?: string }) {
     const params = new URLSearchParams();
     if (filters?.search) params.set('search', filters.search);

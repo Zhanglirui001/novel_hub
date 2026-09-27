@@ -473,6 +473,16 @@ export function useClearChatSession(projectId: number, sessionId: number | null)
   });
 }
 
+export function useDeleteChatSession(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: number) => api.deleteChatSession(sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chat-sessions", projectId] });
+    },
+  });
+}
+
 export function useInspirationCards(projectId: number, filters?: { search?: string; cardType?: string }) {
   return useQuery({
     queryKey: ["inspiration-cards", projectId, filters?.search ?? "", filters?.cardType ?? ""],
