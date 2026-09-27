@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, Expand, MessageSquare, Plus, RotateCcw, Send, Trash2 } from "lucide-react";
+import { BookmarkPlus, Check, Copy, Expand, MessageSquare, NotebookPen, Plus, RotateCcw, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+
+import { Input } from "@/components/ui/input";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,10 +40,68 @@ export function ChatPanel({ fullscreen = false }: { fullscreen?: boolean }) {
     selectChatSession,
     sendChatMessage,
     deleteChatSession,
+    projectId,
     chatStreaming,
     streamingContent,
     clearChat,
   } = useWorkspace();
+
+  const [quickNoteOpen, setQuickNoteOpen] = React.useState(true);
+  const [quickNoteTitle, setQuickNoteTitle] = React.useState("");
+  const [quickNoteContent, setQuickNoteContent] = React.useState("");
+  const [quickNoteKind, setQuickNoteKind] = React.useState<"idea" | "plot" | "character" | "fragment" | "research" | "note">("idea");
+  const notes = React.useMemo(() => [], []);
+  const noteActions = React.useMemo(() => ({ create: { mutateAsync: async (payload: { title: string; content: string; tags: string[]; note_type: string }) => {
+    const res = await fetch(`${window.location.protocol}//${window.location.hostname}:8000/projects/${projectId}/free-notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error("保存随心记失败");
+    return res.json();
+  } } }), [projectId]);
+
+  const recentNotes = React.useMemo(() => {
+    if (typeof window === "undefined") return [];
+    const raw = window.localStorage.getItem(`novelhub-quick-notes:${projectId}`);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw) as Array<{ id: number; title: string; content: string; note_type: string; created_at: string }>;
+    } catch {
+      return [];
+    }
+  }, [projectId]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem(`novelhub-quick-notes:${projectId}`);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Array<{ id: number; title: string; content: string; note_type: string; created_at: string }>;
+      if (!Array.isArray(parsed)) return;
+    } catch {
+      // ignore invalid cache
+    }
+  }, [projectId]);
+
+  const saveQuickNote = React.useCallback(async () => {
+    const title = quickNoteTitle.trim();
+    const content = quickNoteContent.trim();
+    if (!title || !content) return;
+    try {
+      const created = await noteActions.create.mutateAsync({ title, content, tags: [], note_type: quickNoteKind });
+      const next = [created, ...recentNotes].slice(0, 4);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(`novelhub-quick-notes:${projectId}`, JSON.stringify(next));
+      }
+      setQuickNoteTitle("");
+      setQuickNoteContent("");
+      setQuickNoteOpen(true);
+      toast.success("已保存到随心记");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "保存随心记失败");
+    }
+  }, [noteActions, projectId, quickNoteContent, quickNoteKind, quickNoteTitle, recentNotes]);
 
   const messagesEndRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -171,6 +231,65 @@ export function ChatPanel({ fullscreen = false }: { fullscreen?: boolean }) {
               </Button>
             ) : null}
           </div>
+        </div>
+
+        <div className="rounded-lg border bg-card/40 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <NotebookPen className="h-4 w-4 text-primary" />
+              灵感速记
+            </div>
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setQuickNoteOpen((v) => !v)}>
+              {quickNoteOpen ? "收起" : "展开"}
+            </Button>
+          </div>
+          {quickNoteOpen ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={quickNoteTitle}
+                  onChange={(e) => setQuickNoteTitle(e.target.value)}
+                  placeholder="灵感标题"
+                  className="h-8"
+                />
+                <select
+                  value={quickNoteKind}
+                  onChange={(e) => setQuickNoteKind(e.target.value as typeof quickNoteKind)}
+                  className="h-8 rounded-md border bg-background px-2 text-sm"
+                >
+                  <option value="idea">灵感</option>
+                  <option value="plot">情节</option>
+                  <option value="character">人物</option>
+                  <option value="fragment">片段</option>
+                  <option value="research">研究</option>
+                  <option value="note">随笔</option>
+                </select>
+              </div>
+              <Textarea
+                value={quickNoteContent}
+                onChange={(e) => setQuickNoteContent(e.target.value)}
+                placeholder="一边聊天一边记录灵感、人物冲突、场景转折……"
+                className="min-h-20 resize-none"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-muted-foreground">{recentNotes.length} 条最近速记</div>
+                <Button size="sm" onClick={() => void saveQuickNote()} disabled={!quickNoteTitle.trim() || !quickNoteContent.trim()}>
+                  <BookmarkPlus className="h-3.5 w-3.5" />
+                  保存到随心记
+                </Button>
+              </div>
+              {recentNotes.length > 0 ? (
+                <div className="space-y-1 border-t pt-2">
+                  {recentNotes.slice(0, 3).map((note) => (
+                    <div key={`${note.id}-${note.created_at}`} className="rounded border bg-muted/30 p-2 text-xs">
+                      <div className="font-medium text-foreground">{note.title}</div>
+                      <div className="mt-1 whitespace-pre-wrap text-muted-foreground">{note.content}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap gap-2">
