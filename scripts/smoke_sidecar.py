@@ -70,7 +70,7 @@ def main():
             imported = call('/recovery/projects/import?sha256=' + project_preview['sha256'], 'POST', exported)
             assert imported['project_id'] != pid
             assert len(call('/projects')) == 2
-            assert health.get('schema_version') == 1
+            assert health.get('schema_version') == 4
             assert len(list((data / 'backups' / 'library').glob('*-daily-*.novelhub'))) == 1
             print(json.dumps({'packaged_service': str(executable), 'health': health, 'result': 'PASS: startup, persistence, history, preview, rollback, full restore, project import, daily snapshot'}, ensure_ascii=False))
         finally:

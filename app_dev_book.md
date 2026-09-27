@@ -255,11 +255,10 @@ UI 产品方向上，我建议下一阶段优先做：
 
 ### 重新打包
 
-
-
-> powershell -ExecutionPolicy Bypass -File .\release_windows.ps1 -SkipInstaller
-
-
+```shell
+$env:PATH = "$PWD\.venv\Scripts;$env:USERPROFILE\.cargo\bin;$env:PATH"
+powershell -ExecutionPolicy Bypass -File .\release_windows.ps1 -SkipDependencyInstall
+```
 
 > 请问后续我修改代码后如何重新打包？直接再运行powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1命令吗？
 
@@ -599,13 +598,17 @@ $env:HTTPS_PROXY = "http://127.0.0.1:7890"
 
 ### 待优化事项
 
-1. 聊天功能当中的清空当前对话按钮会报错。
+- [x] 聊天功能当中的清空当前对话按钮会报错。
 
-2. 只能新建回话不能删除会话。
+- [x] 只能新建回话不能删除会话。
 
-3. 随心记功能不够灵活，我希望随心记和聊天可以同时开启，这样我可以一边在随心记中记录灵感和思考。
+- [x] 随心记功能不够灵活，我希望随心记和聊天可以同时开启，这样我可以一边在随心记中记录灵感和思考。另外随心记功能是不是还可以扩展一下，编辑更灵活？
 
-   
+- [ ] 重新打包
+
+  
+
+  
 
 
 
