@@ -286,7 +286,6 @@ class StorylineGraphPatchPayload(BaseModel):
 
 
 class OutlineNodeCreatePayload(BaseModel):
-    project_id: int
     parent_id: int | None = None
     kind: str = Field(default="chapter", max_length=32)
     title: str = Field(min_length=1, max_length=255)
