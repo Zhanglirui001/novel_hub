@@ -1,9 +1,17 @@
-import queue
+"""SQLite 数据库层（由 MySQL 版迁移而来）。
+
+设计要点：
+- 用标准库 sqlite3，单文件、免数据库服务。
+- 兼容层：SQL 里的 `%s` 占位符在 `execute()` 时统一翻译成 sqlite3 的 `?`，
+  因此 `api.py` 与各 `services/*.py` 的 SQL 无需逐条改动。
+- 行对象为 dict（等价 pymysql 的 DictCursor），兼容 row["col"] / row.get(...) / .items() / .values()。
+- 一次 `get_conn()` 内所有语句共享一个事务：成功 commit、异常 rollback。
+"""
+from __future__ import annotations
+
+import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
-
-import pymysql
-from pymysql.cursors import DictCursor
 
 import app.config as config
 
@@ -16,628 +24,528 @@ def utc_today() -> str:
     return datetime.utcnow().date().isoformat()
 
 
-def _base_connect(db: str | None = None):
-    return pymysql.connect(
-        host=config.settings.mysql_host,
-        port=config.settings.mysql_port,
-        user=config.settings.mysql_user,
-        password=config.settings.mysql_password,
-        database=db,
-        charset=config.settings.mysql_charset,
-        cursorclass=DictCursor,
-        autocommit=False,
-    )
+def _dict_row(cursor: sqlite3.Cursor, row: tuple) -> dict:
+    return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 
-# 简易连接池:queue.Queue 本身线程安全;空了就临时新建,池满时关掉多余连接。
-# 没引入新依赖(不需要 DBUtils),量级足够覆盖单机日更场景。
-_POOL_SIZE = 10
-_pool: "queue.Queue" = queue.Queue(maxsize=_POOL_SIZE)
+def _translate(sql: str) -> str:
+    """MySQL 风格 %s 占位符 → sqlite3 的 ?。"""
+    return sql.replace("%s", "?")
 
 
-def _acquire():
-    try:
-        conn = _pool.get_nowait()
-    except queue.Empty:
-        return _base_connect(config.settings.mysql_database)
-    try:
-        conn.ping(reconnect=True)
-        return conn
-    except Exception:
-        try:
-            conn.close()
-        except Exception:
-            pass
-        return _base_connect(config.settings.mysql_database)
+class _Cursor:
+    """包裹 sqlite3.Cursor：翻译占位符，并提供 lastrowid / rowcount / 上下文管理。"""
+
+    def __init__(self, cursor: sqlite3.Cursor) -> None:
+        self._cursor = cursor
+
+    def execute(self, sql: str, params=None):
+        if params is None:
+            self._cursor.execute(_translate(sql))
+        else:
+            self._cursor.execute(_translate(sql), params)
+        return self
+
+    def executemany(self, sql: str, seq):
+        self._cursor.executemany(_translate(sql), seq)
+        return self
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    def close(self) -> None:
+        self._cursor.close()
+
+    @property
+    def lastrowid(self):
+        return self._cursor.lastrowid
+
+    @property
+    def rowcount(self) -> int:
+        return self._cursor.rowcount
+
+    @property
+    def description(self):
+        return self._cursor.description
+
+    def __enter__(self) -> "_Cursor":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
 
-def _release(conn) -> None:
-    try:
-        _pool.put_nowait(conn)
-    except queue.Full:
-        try:
-            conn.close()
-        except Exception:
-            pass
+class _Connection:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def cursor(self) -> _Cursor:
+        return _Cursor(self._conn.cursor())
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
+
+    def close(self) -> None:
+        self._conn.close()
+
+    def execute(self, sql: str, params=None) -> _Cursor:
+        return self.cursor().execute(sql, params)
 
 
 @contextmanager
 def get_conn():
-    conn = _acquire()
+    conn = sqlite3.connect(config.settings.sqlite_path, timeout=30)
+    conn.row_factory = _dict_row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     try:
-        yield conn
+        yield _Connection(conn)
         conn.commit()
     except Exception:
         try:
             conn.rollback()
         except Exception:
             pass
-        try:
-            conn.close()
-        except Exception:
-            pass
         raise
-    else:
-        _release(conn)
+    finally:
+        conn.close()
 
 
 def _column_exists(cursor, table: str, column: str) -> bool:
-    cursor.execute(f"SHOW COLUMNS FROM `{table}` LIKE %s", (column,))
-    return cursor.fetchone() is not None
+    cursor.execute(f"PRAGMA table_info({table})")
+    return any(row["name"] == column for row in cursor.fetchall())
 
 
 def _index_exists(cursor, table: str, index: str) -> bool:
-    cursor.execute(f"SHOW INDEX FROM `{table}` WHERE Key_name = %s", (index,))
-    return cursor.fetchone() is not None
+    cursor.execute(f"PRAGMA index_list({table})")
+    return any(row["name"] == index for row in cursor.fetchall())
 
 
 def _ensure_chapter_hierarchy(cursor) -> None:
-    sort_added = False
     if not _column_exists(cursor, "chapters", "group_title"):
-        cursor.execute(
-            "ALTER TABLE chapters ADD COLUMN group_title VARCHAR(255) NOT NULL DEFAULT '默认卷' AFTER title"
-        )
+        cursor.execute("ALTER TABLE chapters ADD COLUMN group_title TEXT NOT NULL DEFAULT '默认卷'")
+    sort_added = False
     if not _column_exists(cursor, "chapters", "sort_order"):
-        cursor.execute(
-            "ALTER TABLE chapters ADD COLUMN sort_order INT NOT NULL DEFAULT 0 AFTER content"
-        )
+        cursor.execute("ALTER TABLE chapters ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
         sort_added = True
 
     if sort_added:
         cursor.execute("SELECT id, project_id FROM chapters ORDER BY project_id ASC, id ASC")
-        rows = cursor.fetchall()
         current_project = None
         order = 0
-        for row in rows:
+        for row in cursor.fetchall():
             if row["project_id"] != current_project:
                 current_project = row["project_id"]
                 order = 0
-            cursor.execute(
-                "UPDATE chapters SET sort_order = %s WHERE id = %s",
-                (order, row["id"]),
-            )
+            cursor.execute("UPDATE chapters SET sort_order = ? WHERE id = ?", (order, row["id"]))
             order += 1
 
     if not _index_exists(cursor, "chapters", "idx_chapters_project_group_order"):
         cursor.execute(
-            "CREATE INDEX idx_chapters_project_group_order ON chapters(project_id, group_title, sort_order, id)"
+            "CREATE INDEX IF NOT EXISTS idx_chapters_project_group_order ON chapters(project_id, group_title, sort_order, id)"
         )
 
 
 def init_db() -> None:
-    bootstrap = _base_connect(None)
-    try:
-        with bootstrap.cursor() as c:
-            c.execute(
-                f"CREATE DATABASE IF NOT EXISTS `{config.settings.mysql_database}` CHARACTER SET {config.settings.mysql_charset}"
-            )
-        bootstrap.commit()
-    finally:
-        bootstrap.close()
-
     with get_conn() as conn:
         c = conn.cursor()
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS projects (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                name VARCHAR(255) NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
                 description TEXT,
-                created_at VARCHAR(32) NOT NULL
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                created_at TEXT NOT NULL
+            )
             """
         )
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS chapters (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                title VARCHAR(255) NOT NULL,
-                group_title VARCHAR(255) NOT NULL DEFAULT '默认卷',
-                content MEDIUMTEXT NOT NULL,
-                sort_order INT NOT NULL DEFAULT 0,
-                version INT NOT NULL DEFAULT 1,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_chapters_project_title(project_id, title),
-                INDEX idx_chapters_project_group_order(project_id, group_title, sort_order, id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                group_title TEXT NOT NULL DEFAULT '默认卷',
+                content TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                updated_at TEXT NOT NULL
+            )
             """
         )
-        _ensure_chapter_hierarchy(c)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_chapters_project_title ON chapters(project_id, title)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS lore_items (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                item_type VARCHAR(64) NOT NULL,
-                name VARCHAR(255) NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                item_type TEXT NOT NULL,
+                name TEXT NOT NULL,
                 content TEXT NOT NULL,
                 tags TEXT,
-                created_at VARCHAR(32) NOT NULL,
-                INDEX idx_lore_project_type(project_id, item_type)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                created_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_lore_project_type ON lore_items(project_id, item_type)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS character_cards (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                name VARCHAR(255) NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
                 profile TEXT NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                INDEX idx_char_project(project_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                created_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_char_project ON character_cards(project_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS style_profiles (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                name VARCHAR(128) NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
                 metrics_json TEXT NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_style_project(project_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_style_project ON style_profiles(project_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS style_samples (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                source VARCHAR(32) NOT NULL,
-                content MEDIUMTEXT NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                INDEX idx_style_sample_project(project_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                source TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_style_sample_project ON style_samples(project_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS consistency_issues (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                chapter_id INT NULL,
-                issue_type VARCHAR(64) NOT NULL,
-                severity VARCHAR(32) NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                chapter_id INTEGER,
+                issue_type TEXT NOT NULL,
+                severity TEXT NOT NULL,
                 message TEXT NOT NULL,
                 suggestion TEXT NOT NULL,
                 meta_json TEXT,
-                created_at VARCHAR(32) NOT NULL,
-                INDEX idx_issue_project(project_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                created_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_issue_project ON consistency_issues(project_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS patch_sets (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                chapter_id INT NULL,
-                task_type VARCHAR(32) NOT NULL,
-                source_text MEDIUMTEXT NOT NULL,
-                result_text MEDIUMTEXT NOT NULL,
-                patch_json MEDIUMTEXT NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                INDEX idx_patch_project(project_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                chapter_id INTEGER,
+                task_type TEXT NOT NULL,
+                source_text TEXT NOT NULL,
+                result_text TEXT NOT NULL,
+                patch_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_patch_project ON patch_sets(project_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS model_run_logs (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                chapter_id INT NULL,
-                task_type VARCHAR(32) NOT NULL,
-                model_role VARCHAR(32) NOT NULL,
-                model_name VARCHAR(64) NOT NULL,
-                prompt_tokens INT NOT NULL DEFAULT 0,
-                completion_tokens INT NOT NULL DEFAULT 0,
-                latency_ms INT NOT NULL DEFAULT 0,
-                cost_estimate DECIMAL(12,6) NOT NULL DEFAULT 0,
-                status VARCHAR(32) NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                chapter_id INTEGER,
+                task_type TEXT NOT NULL,
+                model_role TEXT NOT NULL,
+                model_name TEXT NOT NULL,
+                prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                completion_tokens INTEGER NOT NULL DEFAULT 0,
+                latency_ms INTEGER NOT NULL DEFAULT 0,
+                cost_estimate NUMERIC NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
                 meta_json TEXT,
-                created_at VARCHAR(32) NOT NULL,
-                INDEX idx_model_log_project(project_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                created_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_model_log_project ON model_run_logs(project_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS timeline_events (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                event_time VARCHAR(32) NOT NULL,
-                label VARCHAR(255) NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                event_time TEXT NOT NULL,
+                label TEXT NOT NULL,
                 description TEXT NOT NULL,
-                source VARCHAR(64) NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                INDEX idx_timeline_project(project_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                source TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_timeline_project ON timeline_events(project_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS chapter_mainlines (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                chapter_id INT NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                chapter_id INTEGER NOT NULL,
                 content TEXT NOT NULL,
-                status VARCHAR(32) NOT NULL DEFAULT 'confirmed',
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_mainline_chapter(project_id, chapter_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                status TEXT NOT NULL DEFAULT 'confirmed',
+                updated_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_mainline_chapter ON chapter_mainlines(project_id, chapter_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS project_mainlines (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
                 content TEXT NOT NULL,
                 summary TEXT NOT NULL,
-                status VARCHAR(32) NOT NULL DEFAULT 'confirmed',
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_global_mainline_project(project_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                status TEXT NOT NULL DEFAULT 'confirmed',
+                updated_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_global_mainline_project ON project_mainlines(project_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS daily_todos (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                todo_date DATE NOT NULL,
-                content VARCHAR(500) NOT NULL,
-                completed BOOLEAN NOT NULL DEFAULT FALSE,
-                template_id INT NULL,
-                is_customized BOOLEAN NOT NULL DEFAULT FALSE,
-                sort_order INT NOT NULL DEFAULT 0,
-                created_at VARCHAR(32) NOT NULL,
-                completed_at VARCHAR(32) NULL,
-                INDEX idx_daily_todos_project_date_order(project_id, todo_date, sort_order, id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                todo_date TEXT NOT NULL,
+                content TEXT NOT NULL,
+                completed INTEGER NOT NULL DEFAULT 0,
+                template_id INTEGER,
+                is_customized INTEGER NOT NULL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                completed_at TEXT
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_daily_todos_project_date_order ON daily_todos(project_id, todo_date, sort_order, id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS monthly_fixed_todos (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                month_key CHAR(7) NOT NULL,
-                content VARCHAR(500) NOT NULL,
-                weekdays VARCHAR(20) NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_monthly_fixed_todos_project_month(project_id, month_key)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                month_key TEXT NOT NULL,
+                content TEXT NOT NULL,
+                weekdays TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
             """
         )
-        for statement in (
-            "ALTER TABLE daily_todos ADD COLUMN template_id INT NULL",
-            "ALTER TABLE daily_todos ADD COLUMN is_customized BOOLEAN NOT NULL DEFAULT FALSE",
-        ):
-            try:
-                c.execute(statement)
-            except pymysql.err.OperationalError as exc:
-                if exc.args[0] != 1060:
-                    raise
+        c.execute("CREATE INDEX IF NOT EXISTS idx_monthly_fixed_todos_project_month ON monthly_fixed_todos(project_id, month_key)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS daily_checkins (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                checkin_date DATE NOT NULL,
-                completed_at VARCHAR(32) NOT NULL,
-                is_makeup BOOLEAN NOT NULL DEFAULT FALSE,
-                UNIQUE KEY uq_daily_checkins_project_date(project_id, checkin_date),
-                INDEX idx_daily_checkins_project_date(project_id, checkin_date)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                checkin_date TEXT NOT NULL,
+                completed_at TEXT NOT NULL,
+                is_makeup INTEGER NOT NULL DEFAULT 0
+            )
             """
         )
-        try:
-            c.execute("ALTER TABLE daily_checkins ADD COLUMN is_makeup BOOLEAN NOT NULL DEFAULT FALSE")
-        except pymysql.err.OperationalError as exc:
-            if exc.args[0] != 1060:
-                raise
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_daily_checkins_project_date ON daily_checkins(project_id, checkin_date)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_daily_checkins_project_date ON daily_checkins(project_id, checkin_date)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS chat_sessions (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                title VARCHAR(255) NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_chat_sessions_project_updated(project_id, updated_at, id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_project_updated ON chat_sessions(project_id, updated_at, id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS chat_messages (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                session_id INT NOT NULL,
-                role VARCHAR(32) NOT NULL,
-                content MEDIUMTEXT NOT NULL,
-                context_json MEDIUMTEXT NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                INDEX idx_chat_messages_session(session_id, id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                context_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS model_settings (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                provider VARCHAR(32) NOT NULL,
-                base_url VARCHAR(512) NOT NULL DEFAULT '',
-                api_key VARCHAR(512) NOT NULL DEFAULT '',
-                writer_model VARCHAR(128) NOT NULL DEFAULT '',
-                planner_model VARCHAR(128) NOT NULL DEFAULT '',
-                judge_model VARCHAR(128) NOT NULL DEFAULT '',
-                updated_at VARCHAR(32) NOT NULL
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider TEXT NOT NULL,
+                base_url TEXT NOT NULL DEFAULT '',
+                api_key TEXT NOT NULL DEFAULT '',
+                writer_model TEXT NOT NULL DEFAULT '',
+                planner_model TEXT NOT NULL DEFAULT '',
+                judge_model TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL
+            )
             """
         )
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS storyline_graphs (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
                 viewport_json TEXT NOT NULL,
-                version INT NOT NULL DEFAULT 1,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                UNIQUE KEY uq_storyline_graph_project(project_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_storyline_graph_project ON storyline_graphs(project_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS storyline_nodes (
-                id VARCHAR(64) PRIMARY KEY,
-                graph_id INT NOT NULL,
-                title VARCHAR(255) NOT NULL DEFAULT '',
-                description MEDIUMTEXT NOT NULL,
-                position_x DOUBLE NOT NULL DEFAULT 0,
-                position_y DOUBLE NOT NULL DEFAULT 0,
-                width DOUBLE NULL,
-                height DOUBLE NULL,
-                z_index INT NOT NULL DEFAULT 0,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_storyline_nodes_graph(graph_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                id TEXT PRIMARY KEY,
+                graph_id INTEGER NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL,
+                position_x REAL NOT NULL DEFAULT 0,
+                position_y REAL NOT NULL DEFAULT 0,
+                width REAL,
+                height REAL,
+                z_index INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_storyline_nodes_graph ON storyline_nodes(graph_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS storyline_edges (
-                id VARCHAR(64) PRIMARY KEY,
-                graph_id INT NOT NULL,
-                source_node_id VARCHAR(64) NOT NULL,
-                target_node_id VARCHAR(64) NOT NULL,
-                label VARCHAR(255) NOT NULL DEFAULT '',
+                id TEXT PRIMARY KEY,
+                graph_id INTEGER NOT NULL,
+                source_node_id TEXT NOT NULL,
+                target_node_id TEXT NOT NULL,
+                label TEXT NOT NULL DEFAULT '',
                 style_json TEXT NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_storyline_edges_graph(graph_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_storyline_edges_graph ON storyline_edges(graph_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS inspiration_cards (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                card_type VARCHAR(64) NOT NULL,
-                title VARCHAR(255) NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                card_type TEXT NOT NULL,
+                title TEXT NOT NULL,
                 content TEXT NOT NULL,
                 tags_json TEXT NOT NULL,
-                color VARCHAR(32) NOT NULL DEFAULT 'amber',
-                origin VARCHAR(32) NOT NULL DEFAULT 'manual',
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_inspiration_cards_project_updated(project_id, updated_at, id),
-                INDEX idx_inspiration_cards_project_type(project_id, card_type)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                color TEXT NOT NULL DEFAULT 'amber',
+                origin TEXT NOT NULL DEFAULT 'manual',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_inspiration_cards_project_updated ON inspiration_cards(project_id, updated_at, id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_inspiration_cards_project_type ON inspiration_cards(project_id, card_type)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS inspiration_boards (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                title VARCHAR(255) NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
                 description TEXT NOT NULL,
                 viewport_json TEXT NOT NULL,
-                graph_version INT NOT NULL DEFAULT 1,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_inspiration_boards_project_updated(project_id, updated_at, id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                graph_version INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_inspiration_boards_project_updated ON inspiration_boards(project_id, updated_at, id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS inspiration_board_nodes (
-                id VARCHAR(64) PRIMARY KEY,
-                board_id INT NOT NULL,
-                card_id INT NULL,
-                node_type VARCHAR(32) NOT NULL,
-                position_x DOUBLE NOT NULL DEFAULT 0,
-                position_y DOUBLE NOT NULL DEFAULT 0,
-                width DOUBLE NULL,
-                height DOUBLE NULL,
-                z_index INT NOT NULL DEFAULT 0,
-                data_json MEDIUMTEXT NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_inspiration_nodes_board(board_id),
-                INDEX idx_inspiration_nodes_card(card_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                id TEXT PRIMARY KEY,
+                board_id INTEGER NOT NULL,
+                card_id INTEGER,
+                node_type TEXT NOT NULL,
+                position_x REAL NOT NULL DEFAULT 0,
+                position_y REAL NOT NULL DEFAULT 0,
+                width REAL,
+                height REAL,
+                z_index INTEGER NOT NULL DEFAULT 0,
+                data_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_inspiration_nodes_board ON inspiration_board_nodes(board_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_inspiration_nodes_card ON inspiration_board_nodes(card_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS inspiration_board_edges (
-                id VARCHAR(64) PRIMARY KEY,
-                board_id INT NOT NULL,
-                source_node_id VARCHAR(64) NOT NULL,
-                target_node_id VARCHAR(64) NOT NULL,
-                edge_type VARCHAR(32) NOT NULL DEFAULT 'relation',
-                label VARCHAR(255) NOT NULL DEFAULT '',
+                id TEXT PRIMARY KEY,
+                board_id INTEGER NOT NULL,
+                source_node_id TEXT NOT NULL,
+                target_node_id TEXT NOT NULL,
+                edge_type TEXT NOT NULL DEFAULT 'relation',
+                label TEXT NOT NULL DEFAULT '',
                 style_json TEXT NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_inspiration_edges_board(board_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_inspiration_edges_board ON inspiration_board_edges(board_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS inspiration_board_chat_sessions (
-                board_id INT PRIMARY KEY,
-                chat_session_id INT NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_inspiration_board_chat_session(chat_session_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                board_id INTEGER PRIMARY KEY,
+                chat_session_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_inspiration_board_chat_session ON inspiration_board_chat_sessions(chat_session_id)")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS inspiration_ai_proposals (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                board_id INT NOT NULL,
-                assistant_message_id INT NULL,
-                base_graph_version INT NOT NULL,
-                actions_json MEDIUMTEXT NOT NULL,
-                status VARCHAR(32) NOT NULL DEFAULT 'draft',
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_inspiration_proposals_board_status(board_id, status, id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                board_id INTEGER NOT NULL,
+                assistant_message_id INTEGER,
+                base_graph_version INTEGER NOT NULL,
+                actions_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
             """
         )
-        c.execute(
-            """
-            CREATE TABLE IF NOT EXISTS inspiration_cards (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                card_type VARCHAR(64) NOT NULL,
-                title VARCHAR(255) NOT NULL,
-                content TEXT NOT NULL,
-                tags_json TEXT NOT NULL,
-                color VARCHAR(32) NOT NULL DEFAULT 'amber',
-                origin VARCHAR(32) NOT NULL DEFAULT 'manual',
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_inspiration_cards_project_updated(project_id, updated_at, id),
-                INDEX idx_inspiration_cards_project_type(project_id, card_type)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            """
-        )
-        c.execute(
-            """
-            CREATE TABLE IF NOT EXISTS inspiration_boards (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                title VARCHAR(255) NOT NULL,
-                description TEXT NOT NULL,
-                viewport_json TEXT NOT NULL,
-                graph_version INT NOT NULL DEFAULT 1,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_inspiration_boards_project_updated(project_id, updated_at, id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            """
-        )
-        c.execute(
-            """
-            CREATE TABLE IF NOT EXISTS inspiration_board_nodes (
-                id VARCHAR(64) PRIMARY KEY,
-                board_id INT NOT NULL,
-                card_id INT NULL,
-                node_type VARCHAR(32) NOT NULL,
-                position_x DOUBLE NOT NULL DEFAULT 0,
-                position_y DOUBLE NOT NULL DEFAULT 0,
-                width DOUBLE NULL,
-                height DOUBLE NULL,
-                z_index INT NOT NULL DEFAULT 0,
-                data_json MEDIUMTEXT NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_inspiration_nodes_board(board_id),
-                INDEX idx_inspiration_nodes_card(card_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            """
-        )
-        c.execute(
-            """
-            CREATE TABLE IF NOT EXISTS inspiration_board_edges (
-                id VARCHAR(64) PRIMARY KEY,
-                board_id INT NOT NULL,
-                source_node_id VARCHAR(64) NOT NULL,
-                target_node_id VARCHAR(64) NOT NULL,
-                edge_type VARCHAR(32) NOT NULL DEFAULT 'relation',
-                label VARCHAR(255) NOT NULL DEFAULT '',
-                style_json TEXT NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_inspiration_edges_board(board_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            """
-        )
-        c.execute(
-            """
-            CREATE TABLE IF NOT EXISTS inspiration_board_chat_sessions (
-                board_id INT PRIMARY KEY,
-                chat_session_id INT NOT NULL,
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_inspiration_board_chat_session(chat_session_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            """
-        )
-        c.execute(
-            """
-            CREATE TABLE IF NOT EXISTS inspiration_ai_proposals (
-                id INT PRIMARY KEY AUTO_INCREMENT,
-                project_id INT NOT NULL,
-                board_id INT NOT NULL,
-                assistant_message_id INT NULL,
-                base_graph_version INT NOT NULL,
-                actions_json MEDIUMTEXT NOT NULL,
-                status VARCHAR(32) NOT NULL DEFAULT 'draft',
-                created_at VARCHAR(32) NOT NULL,
-                updated_at VARCHAR(32) NOT NULL,
-                INDEX idx_inspiration_proposals_board_status(board_id, status, id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            """
-        )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_inspiration_proposals_board_status ON inspiration_ai_proposals(board_id, status, id)")
+        _ensure_chapter_hierarchy(c)

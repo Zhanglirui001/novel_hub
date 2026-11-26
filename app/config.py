@@ -37,6 +37,12 @@ _load_dotenv()
 
 @dataclass(frozen=True)
 class Settings:
+    # 运行时数据库：SQLite 单文件（默认 novel_hub/novel_hub.db）
+    sqlite_path: str = os.getenv(
+        "SQLITE_PATH",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "novel_hub.db")),
+    )
+    # 历史 MySQL 配置：仅一次性数据迁移脚本 migrate_mysql_to_sqlite.py 使用
     mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
     mysql_port: int = int(os.getenv("MYSQL_PORT", "3306"))
     mysql_user: str = os.getenv("MYSQL_USER", "root")

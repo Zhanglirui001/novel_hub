@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { usePrompt } from "@/components/ui/use-prompt";
 import { api } from "@/lib/api";
 import {
   useCreateInspirationBoard,
@@ -70,6 +71,7 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
   const patchGraph = usePatchInspirationGraph(projectId, boardId);
   const globalMainlineQuery = useGlobalMainline(projectId);
   const saveGlobalMainline = useSaveGlobalMainline(projectId);
+  const { prompt, confirm, dialogs } = usePrompt();
 
   // 把灵感卡片「提升为」全书主线：追加到现有全书主线大纲末尾。
   const sendCardToGlobalMainline = useCallback(
@@ -178,7 +180,7 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
   };
 
   const createNewBoard = async () => {
-    const title = window.prompt("画板名称", "剧情主线");
+    const title = await prompt("画板名称", "剧情主线");
     if (!title?.trim()) return;
     try {
       const board = await createBoard.mutateAsync({ title: title.trim() });
@@ -321,11 +323,12 @@ export function InspirationStudio({ projectId, projectTitle }: InspirationStudio
             <Input value={draft.tags.join(", ")} onChange={(event) => setDraft((current) => ({ ...current, tags: event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean) }))} placeholder="标签，用逗号分隔" />
           </div>
           <DialogFooter className="gap-2 sm:justify-between">
-            {selectedCard ? <Button variant="ghost" className="text-rose-700 hover:text-rose-800" onClick={async () => { if (window.confirm("删除此卡片及其画板引用？")) { await deleteCard.mutateAsync(selectedCard.id); setSelectedCard(null); setEditorOpen(false); boardQuery.refetch(); } }}><Trash2 className="mr-1 size-4" />删除</Button> : <span />}
+            {selectedCard ? <Button variant="ghost" className="text-rose-700 hover:text-rose-800" onClick={async () => { if (await confirm("删除此卡片及其画板引用？")) { await deleteCard.mutateAsync(selectedCard.id); setSelectedCard(null); setEditorOpen(false); boardQuery.refetch(); } }}><Trash2 className="mr-1 size-4" />删除</Button> : <span />}
             <Button onClick={saveCard} disabled={!draft.title.trim() || createCard.isPending || updateCard.isPending}>保存卡片</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {dialogs}
     </main>
   );
 }

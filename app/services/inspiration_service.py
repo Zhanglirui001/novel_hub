@@ -412,7 +412,7 @@ class InspirationService:
                 """
                 INSERT INTO inspiration_board_chat_sessions (board_id, chat_session_id, created_at, updated_at)
                 VALUES (%s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
+                ON CONFLICT(board_id) DO UPDATE SET updated_at = excluded.updated_at
                 """,
                 (board_id, session["id"], now, now),
             )

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { usePrompt } from "@/components/ui/use-prompt";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import {
@@ -52,6 +53,7 @@ export function ChapterRail() {
   const renameChapter = useRenameChapter(projectId);
   const moveChapter = useMoveChapter(projectId);
   const deleteChapter = useDeleteChapter(projectId);
+  const { prompt, confirm, dialogs } = usePrompt();
   const groups = groupChapters(chapters);
 
   async function openChapter(id: number) {
@@ -118,7 +120,7 @@ export function ChapterRail() {
   }
 
   async function newGroup() {
-    const next = window.prompt("新建卷/分组", nextGroupTitle());
+    const next = await prompt("新建卷/分组", nextGroupTitle());
     if (next === null) return;
     const groupTitle = normalizeGroupTitle(next);
     await newChapter(groupTitle);
@@ -129,7 +131,7 @@ export function ChapterRail() {
   }
 
   async function handleRename(ch: ChapterSummary) {
-    const next = window.prompt("重命名章节", ch.title);
+    const next = await prompt("重命名章节", ch.title);
     if (next === null) return;
     const title = next.trim();
     if (!title || title === ch.title) return;
@@ -157,7 +159,7 @@ export function ChapterRail() {
   }
 
   async function handleMove(ch: ChapterSummary) {
-    const next = window.prompt("移动到卷/分组", normalizeGroupTitle(ch.group_title));
+    const next = await prompt("移动到卷/分组", normalizeGroupTitle(ch.group_title));
     if (next === null) return;
     const groupTitle = normalizeGroupTitle(next);
     if (groupTitle === normalizeGroupTitle(ch.group_title)) return;
@@ -190,7 +192,7 @@ export function ChapterRail() {
   }
 
   async function handleDelete(ch: ChapterSummary) {
-    if (!window.confirm(`删除《${ch.title}》?此操作不可撤销。`)) return;
+    if (!(await confirm(`删除《${ch.title}》?此操作不可撤销。`))) return;
 
     const prev = queryClient.getQueryData<ChapterSummary[]>([
       "chapters",
@@ -270,6 +272,7 @@ export function ChapterRail() {
           )}
         </div>
       </ScrollArea>
+      {dialogs}
     </div>
   );
 }

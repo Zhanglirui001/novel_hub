@@ -14,7 +14,7 @@
 
 ## 架构概览
 
-分层结构：`Next.js Web` 与 `FastAPI` 后端通过 REST API 协作，FastAPI 复用服务层逻辑，底层落地到 MySQL。
+分层结构：`Next.js Web` 与 `FastAPI` 后端通过 REST API 协作，FastAPI 复用服务层逻辑，底层落地到 **SQLite**（单文件，零运维）。
 
 ```
 ┌────────────────────────┐    ┌────────────────────────┐
@@ -35,7 +35,7 @@
         └────────────────┬─────────────────┘
                          ▼
             ┌────────────────────────┐
-            │  MySQL (novel_hub)     │
+            │  SQLite (novel_hub.db) │
             │  app/database.py       │
             └────────────────────────┘
 ```
@@ -45,10 +45,11 @@
 ```
 novel_hub/
 ├── requirements.txt              # 后端依赖清单
+├── migrate_mysql_to_sqlite.py    # 一次性数据迁移（可选）
 ├── app/
 │   ├── api.py                    # FastAPI 路由层
 │   ├── config.py                 # 配置（含 .env 加载）
-│   ├── database.py               # MySQL 连接 / 建库建表
+│   ├── database.py               # SQLite 连接 / 建表
 │   ├── schemas.py                # Pydantic 请求模型
 │   └── services/
 │       ├── lore_service.py       # 设定上下文管理
@@ -92,22 +93,16 @@ novel_hub/
 
 - Python 3.10+
 - Node.js 18+
-- MySQL 5.7 / 8.0（启动时会自动建库 `novel_hub` 和相关表）
+- **SQLite**（Python 内置 `sqlite3`，无需额外安装；启动时自动建表，默认文件 `novel_hub/novel_hub.db`）
 
 ## 配置
 
-支持在项目根目录的 `.env` 中覆盖默认 MySQL 配置（不存在时使用代码中的默认值）：
+数据库默认使用 `novel_hub/novel_hub.db`（SQLite，自动创建），可通过环境变量 `SQLITE_PATH` 覆盖。
 
-```env
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=your_password
-MYSQL_DATABASE=novel_hub
-MYSQL_CHARSET=utf8mb4
-```
+> 历史数据迁移：若需把旧的 MySQL 数据导入 SQLite，在 `novel_hub/` 下运行
+> `python migrate_mysql_to_sqlite.py`（详见 `SQLITE_MIGRATION.md`；需 `PyMySQL`，已保留在 requirements）。
 
-> `.env` 已加入 `.gitignore`，请勿提交真实密钥。可建立 `.env.example` 作为模板。
+`.env` 已加入 `.gitignore`，请勿提交真实密钥。
 
 ## 启动方式
 
@@ -133,7 +128,7 @@ npm install
 npm run dev
 ```
 
-默认访问 `http://localhost:3000`。前端默认请求 `http://localhost:8000`，可在 `web/.env.local` 中通过 `NEXT_PUBLIC_API_BASE` 覆盖。
+默认访问 `http://localhost:3001`。前端默认请求 `http://localhost:8000`，可在 `web/.env.local` 中通过 `NEXT_PUBLIC_API_BASE` 覆盖。
 
 ### 4. 运行测试
 

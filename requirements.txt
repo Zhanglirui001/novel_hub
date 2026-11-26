@@ -1,5 +1,6 @@
-﻿fastapi>=0.115.0
+fastapi>=0.115.0
 uvicorn>=0.30.0
 pydantic>=2.8.0
-PyMySQL>=1.1.1
 langgraph>=0.2.0
+# 仅一次性数据迁移脚本 migrate_mysql_to_sqlite.py 需要（运行时已改用 SQLite）
+PyMySQL>=1.1.1

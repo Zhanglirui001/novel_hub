@@ -27,6 +27,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { InspirationCardNode, QuickNode } from "./inspiration-card-node";
+import { usePrompt } from "@/components/ui/use-prompt";
 import type { InspirationBoardEdge, InspirationBoardGraph, InspirationBoardNode, InspirationCard, InspirationViewport } from "@/lib/types";
 
 type CanvasNodeData = { card?: InspirationCard; annotation?: string; title?: string; content?: string; nodeType?: "annotation" | "event" | "character" };
@@ -102,6 +103,7 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
   const [edges, setEdges] = useState<Edge<CanvasEdgeData>[]>([]);
   const flowRef = useRef<ReactFlowInstance<Node<CanvasNodeData>, Edge<CanvasEdgeData>> | null>(null);
   const cardsById = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
+  const { prompt, dialogs } = usePrompt();
 
   useEffect(() => {
     setNodes(toFlowNodes(graph.nodes, cards));
@@ -241,8 +243,8 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
     emit(next, edges);
   };
 
-  const addQuickNode = (nodeType: "annotation" | "event" | "character") => {
-    const title = window.prompt(nodeType === "event" ? "事件名称" : nodeType === "character" ? "角色名称" : "注释内容");
+  const addQuickNode = async (nodeType: "annotation" | "event" | "character") => {
+    const title = await prompt(nodeType === "event" ? "事件名称" : nodeType === "character" ? "角色名称" : "注释内容");
     if (!title?.trim()) return;
     const next = [...nodes, {
       id: `${nodeType}-${crypto.randomUUID()}`,
@@ -322,6 +324,7 @@ export function BoardCanvas({ graph, cards, selectedNodeIds, onSelectedNodeIdsCh
           </EdgeToolbar>
         ))}
       </ReactFlow>
+      {dialogs}
     </div>
   );
 }

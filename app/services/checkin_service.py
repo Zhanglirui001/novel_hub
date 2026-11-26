@@ -414,7 +414,7 @@ class CheckinService:
                 """
                 INSERT INTO daily_checkins (project_id, checkin_date, completed_at)
                 VALUES (%s, %s, %s)
-                ON DUPLICATE KEY UPDATE completed_at = completed_at
+                ON CONFLICT(project_id, checkin_date) DO UPDATE SET completed_at = completed_at
                 """,
                 (project_id, today, now),
             )
