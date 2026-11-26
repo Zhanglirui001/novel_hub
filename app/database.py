@@ -548,4 +548,21 @@ def init_db() -> None:
             """
         )
         c.execute("CREATE INDEX IF NOT EXISTS idx_inspiration_proposals_board_status ON inspiration_ai_proposals(board_id, status, id)")
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS outline_nodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                parent_id INTEGER,
+                kind TEXT NOT NULL DEFAULT 'chapter',
+                title TEXT NOT NULL,
+                summary TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'draft',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_outline_project ON outline_nodes(project_id)")
         _ensure_chapter_hierarchy(c)

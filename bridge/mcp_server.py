@@ -437,6 +437,207 @@ def nh_create_style_profile(project_id: int, samples: list, name: str = "default
     return _j(http.post("/style/profile", {"project_id": project_id, "name": name, "samples": samples}))
 
 
+# ---- 打卡 / 待办 -------------------------------------------------------------
+
+@mcp.tool()
+def nh_get_daily_checkin(project_id: int) -> str:
+    """读取今日打卡状态。"""
+    return _j(http.get(f"/projects/{project_id}/daily-checkin"))
+
+
+@mcp.tool()
+def nh_get_daily_checkin_day(project_id: int, day: str) -> str:
+    """读取某天的打卡与待办（day=YYYY-MM-DD）。"""
+    return _j(http.get(f"/projects/{project_id}/daily-checkin/{day}"))
+
+
+@mcp.tool()
+def nh_get_daily_checkin_month(project_id: int, month: str) -> str:
+    """读取某月打卡概览（month=YYYY-MM）。"""
+    return _j(http.get(f"/projects/{project_id}/daily-checkin/month?month={month}"))
+
+
+@mcp.tool()
+def nh_check_in(project_id: int) -> str:
+    """每日打卡。"""
+    return _j(http.post(f"/projects/{project_id}/daily-checkin", {}))
+
+
+@mcp.tool()
+def nh_make_up_checkin(project_id: int, day: str) -> str:
+    """补打卡某天。"""
+    return _j(http.post(f"/projects/{project_id}/daily-checkin/{day}/makeup", {}))
+
+
+@mcp.tool()
+def nh_create_daily_todo(project_id: int, day: str, content: str) -> str:
+    """新增每日待办（day=YYYY-MM-DD）。"""
+    return _j(http.post(f"/projects/{project_id}/daily-todos?day={day}", {"content": content}))
+
+
+@mcp.tool()
+def nh_update_daily_todo(todo_id: int, project_id: int, day: str,
+                         content: str | None = None, completed: bool | None = None) -> str:
+    """更新每日待办（内容 / 完成状态）。"""
+    return _j(http.patch(f"/daily-todos/{todo_id}?project_id={project_id}&day={day}",
+                         _body(content=content, completed=completed)))
+
+
+@mcp.tool()
+def nh_delete_daily_todo(todo_id: int, project_id: int, day: str) -> str:
+    """删除每日待办。"""
+    return _j(http.delete(f"/daily-todos/{todo_id}?project_id={project_id}&day={day}"))
+
+
+@mcp.tool()
+def nh_list_monthly_fixed_todos(project_id: int, month: str) -> str:
+    """列出某月的每月固定待办（month=YYYY-MM）。"""
+    return _j(http.get(f"/projects/{project_id}/monthly-fixed-todos?month={month}"))
+
+
+@mcp.tool()
+def nh_create_monthly_fixed_todo(project_id: int, month: str, content: str, weekdays: list) -> str:
+    """创建每月固定待办（weekdays 为 1-7 的整数列表）。"""
+    return _j(http.post(f"/projects/{project_id}/monthly-fixed-todos",
+                        {"month": month, "content": content, "weekdays": weekdays}))
+
+
+@mcp.tool()
+def nh_update_monthly_fixed_todo(template_id: int, project_id: int,
+                                 content: str | None = None, weekdays: list | None = None) -> str:
+    """更新每月固定待办。"""
+    return _j(http.patch(f"/monthly-fixed-todos/{template_id}?project_id={project_id}",
+                         _body(content=content, weekdays=weekdays)))
+
+
+@mcp.tool()
+def nh_delete_monthly_fixed_todo(template_id: int, project_id: int) -> str:
+    """删除每月固定待办。"""
+    return _j(http.delete(f"/monthly-fixed-todos/{template_id}?project_id={project_id}"))
+
+
+# ---- 灵感提案 ---------------------------------------------------------------
+
+@mcp.tool()
+def nh_create_inspiration_proposal(project_id: int, board_id: int, base_graph_version: int, actions: list) -> str:
+    """创建灵感看板 AI 提案（actions 为提案动作列表）。"""
+    return _j(http.post(f"/projects/{project_id}/inspiration/boards/{board_id}/proposals",
+                        {"base_graph_version": base_graph_version, "actions": actions}))
+
+
+@mcp.tool()
+def nh_apply_inspiration_proposal(project_id: int, proposal_id: int) -> str:
+    """应用灵感提案。"""
+    return _j(http.post(f"/projects/{project_id}/inspiration/proposals/{proposal_id}/apply", {}))
+
+
+@mcp.tool()
+def nh_dismiss_inspiration_proposal(project_id: int, proposal_id: int) -> str:
+    """驳回灵感提案。"""
+    return _j(http.post(f"/projects/{project_id}/inspiration/proposals/{proposal_id}/dismiss", {}))
+
+
+# ---- 流式接口（缓冲为完整结果）-------------------------------------------------
+
+def _sse_text(path: str, payload: dict) -> str:
+    """调用 SSE 流式接口并缓冲为完整文本（处理 delta / replace / error 事件）。"""
+    raw = http.request_raw("POST", path, payload)
+    text = ""
+    for line in raw.splitlines():
+        if not line.startswith("data: "):
+            continue
+        try:
+            ev = json.loads(line[6:])
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        etype = ev.get("type")
+        if etype == "delta":
+            if ev.get("replace") is not None:
+                text = ev["replace"]
+            else:
+                text += ev.get("text", "")
+        elif etype == "error":
+            raise RuntimeError(ev.get("message", "流式接口返回错误"))
+    return text or raw
+
+
+@mcp.tool()
+def nh_inspiration_discussion(project_id: int, board_id: int, content: str,
+                              selected_node_ids: list | None = None) -> str:
+    """灵感看板讨论（流式接口缓冲为完整回复）。"""
+    return _sse_text(
+        f"/projects/{project_id}/inspiration/boards/{board_id}/discussion/stream",
+        {"content": content, "selected_node_ids": selected_node_ids or []},
+    )
+
+
+@mcp.tool()
+def nh_chapter_mainline_discussion(project_id: int, chapter_id: int, content: str,
+                                   history: list | None = None) -> str:
+    """章节主线讨论（流式接口缓冲为完整回复）。"""
+    return _sse_text(
+        f"/projects/{project_id}/chapters/{chapter_id}/mainline/discussion/stream",
+        {"project_id": project_id, "content": content, "history": history or []},
+    )
+
+
+@mcp.tool()
+def nh_send_chat_message_stream(session_id: int, content: str, chapter_title: str = "未命名章节",
+                                chapter_group_title: str = "默认卷", active_chapter_id: int | None = None,
+                                selection_text: str | None = None) -> str:
+    """发送聊天消息（流式接口缓冲为完整回复）。"""
+    return _sse_text(f"/chat-sessions/{session_id}/messages/stream", {
+        "content": content, "chapter_title": chapter_title,
+        "chapter_group_title": chapter_group_title,
+        "active_chapter_id": active_chapter_id, "selection_text": selection_text,
+    })
+
+
+@mcp.tool()
+def nh_continue_stream(project_id: int, tail_text: str = "", instruction: str = "",
+                       directive: dict | None = None, chapter_title: str = "未命名章节",
+                       mode: str = "continue", mainline: str = "", use_global_mainline: bool = True) -> str:
+    """AI 续写（流式接口缓冲为完整结果，含 writing_agent 的规划/修复）。"""
+    return _sse_text("/draft/continue/stream", {
+        "project_id": project_id, "tail_text": tail_text, "instruction": instruction,
+        "directive": directive or {}, "chapter_title": chapter_title, "mode": mode,
+        "mainline": mainline, "use_global_mainline": use_global_mainline,
+    })
+
+
+# ---- 大纲 -------------------------------------------------------------------
+
+@mcp.tool()
+def nh_get_outline(project_id: int) -> str:
+    """读取项目大纲树（卷→章→场景→细纲）。"""
+    return _j(http.get(f"/projects/{project_id}/outline"))
+
+
+@mcp.tool()
+def nh_create_outline_node(project_id: int, title: str, parent_id: int | None = None,
+                           kind: str = "chapter", summary: str = "") -> str:
+    """新增大纲节点（parent_id 为空表示顶层）。kind: volume/chapter/scene/beat。"""
+    return _j(http.post(f"/projects/{project_id}/outline",
+                        {"parent_id": parent_id, "kind": kind, "title": title, "summary": summary}))
+
+
+@mcp.tool()
+def nh_update_outline_node(node_id: int, title: str | None = None, summary: str | None = None,
+                           status: str | None = None, parent_id: int | None = None,
+                           kind: str | None = None, sort_order: int | None = None) -> str:
+    """更新大纲节点（只改传入字段）。"""
+    return _j(http.patch(f"/outline/{node_id}", _body(
+        title=title, summary=summary, status=status, parent_id=parent_id, kind=kind, sort_order=sort_order)))
+
+
+@mcp.tool()
+def nh_delete_outline_node(node_id: int) -> str:
+    """删除大纲节点（含所有子节点）。"""
+    return _j(http.delete(f"/outline/{node_id}"))
+
+
 def main() -> None:
     mcp.run(transport="stdio")
 

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ChevronLeft, Network, PanelLeft } from "lucide-react";
+import { Activity, ChevronLeft, ListTree, Network, PanelLeft } from "lucide-react";
 
 import { ThemePicker } from "@/components/theme-picker";
 import { Button } from "@/components/ui/button";
@@ -115,6 +115,28 @@ export function WorkspaceShell() {
           ) : (
             <h1 className="display-title text-lg">{project?.name ?? "作品"}</h1>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5"
+            asChild
+          >
+            <Link href="/radar" aria-label="打开实时雷达">
+              <Activity className="size-3.5" />
+              <span>雷达</span>
+            </Link>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5"
+            asChild
+          >
+            <Link href={`/projects/${projectId}/outline`} aria-label="打开故事大纲">
+              <ListTree className="size-3.5" />
+              <span>大纲</span>
+            </Link>
+          </Button>
           <Button
             variant="outline"
             size="sm"

@@ -284,3 +284,20 @@ class StorylineGraphPatchPayload(BaseModel):
     edges: list[StorylineEdgePayload] = Field(default_factory=list)
     deleted_edge_ids: list[str] = Field(default_factory=list)
 
+
+class OutlineNodeCreatePayload(BaseModel):
+    project_id: int
+    parent_id: int | None = None
+    kind: str = Field(default="chapter", max_length=32)
+    title: str = Field(min_length=1, max_length=255)
+    summary: str = ""
+
+
+class OutlineNodeUpdatePayload(BaseModel):
+    parent_id: int | None = None
+    kind: str | None = Field(default=None, max_length=32)
+    title: str | None = Field(default=None, max_length=255)
+    summary: str | None = None
+    status: str | None = Field(default=None, max_length=32)
+    sort_order: int | None = None
+

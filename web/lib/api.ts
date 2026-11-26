@@ -51,6 +51,7 @@ import {
   GlobalMainline,
   MainlineDiscussionPayload,
   MainlineDiscussionEvent,
+  OutlineNode,
   TaskType,
   WritingDirective,
 } from "./types";
@@ -603,5 +604,26 @@ export const api = {
     } finally {
       reader.releaseLock();
     }
+  },
+
+  listOutline(projectId: number) {
+    return request<OutlineNode[]>(`/projects/${projectId}/outline`);
+  },
+  createOutlineNode(projectId: number, payload: { parent_id: number | null; kind?: string; title: string; summary?: string }) {
+    return request<OutlineNode>(`/projects/${projectId}/outline`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  updateOutlineNode(nodeId: number, payload: Record<string, unknown>) {
+    return request<OutlineNode>(`/outline/${nodeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteOutlineNode(nodeId: number) {
+    return request<{ deleted: number }>(`/outline/${nodeId}`, {
+      method: 'DELETE',
+    });
   },
 };

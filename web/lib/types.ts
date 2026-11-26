@@ -10,6 +10,17 @@ export interface Project {
   created_at: string;
 }
 
+export interface OutlineNode {
+  id: number;
+  parent_id: number | null;
+  kind: string;
+  title: string;
+  summary: string;
+  sort_order: number;
+  status: string;
+  children?: OutlineNode[];
+}
+
 export interface DailyTodo {
   id: number;
   content: string;

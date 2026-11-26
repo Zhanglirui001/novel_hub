@@ -51,3 +51,22 @@ def patch(path: str, payload, base: str = DEFAULT_BASE):
 
 def delete(path: str, base: str = DEFAULT_BASE):
     return request("DELETE", path, base=base)
+
+
+def request_raw(method: str, path: str, payload=None, base: str = DEFAULT_BASE, timeout: int = 300) -> str:
+    """原始请求：返回响应体文本（用于 SSE 流式接口的缓冲读取）。"""
+    url = base.rstrip("/") + path
+    data = None
+    headers = {"Accept": "text/event-stream"}
+    if payload is not None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers, method=method.upper())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise HttpError(f"HTTP {exc.code} {method} {path} -> {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise HttpError(f"无法连接 novel_hub 后端（{base}）。原因：{exc.reason}") from exc

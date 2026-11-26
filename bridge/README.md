@@ -43,11 +43,12 @@ powershell -File scripts/start_novel_hub.ps1
 
 ## MCP + CLI（覆盖全部主要操作）
 
-`bridge/mcp_server.py`（基于官方 `mcp` SDK v2）把 novel_hub 的**全部非流式 REST 操作**暴露为
-51 个 MCP 工具，DSH 经配置型 bundle（`.dsh/novelhub-mcp/`）以 stdio 连接，工具名 `mcp__novelhub__*`。
+`bridge/mcp_server.py`（基于官方 `mcp` SDK v2）把 novel_hub 的**几乎全部 REST 操作**暴露为
+70 个 MCP 工具，DSH 经配置型 bundle（`.dsh/novelhub-mcp/`）以 stdio 连接，工具名 `mcp__novelhub__*`。
 
 覆盖域：项目 / 章节（增删改移）/ 设定与时间线 / 全书与章节主线 / 故事线图 / 灵感卡片与看板（含图 CRUD）/
-AI 续写·采纳·润色·分析·重写 / 一致性检测 / 补丁采纳 / 聊天 / 备份 / LLM 设置 / 文风 / 同步回流。
+灵感提案（创建/应用/驳回）/ AI 续写·采纳·润色·分析·重写 / 一致性检测 / 补丁采纳 / 聊天 / 备份 / LLM 设置 / 文风 /
+打卡·待办·每月固定待办 / 流式接口（讨论/聊天/续写，缓冲为完整结果）/ 同步回流。
 
 ```powershell
 # 手测服务端（stdio 由 DSH 客户端拉起，日常无需手动跑）
@@ -59,4 +60,4 @@ AI 续写·采纳·润色·分析·重写 / 一致性检测 / 补丁采纳 / 聊
 ```
 
 > 注意：官方 `mcp` SDK 需装入 venv（本 venv 无 pip，用 `uv pip install --python .venv\Scripts\python.exe mcp`）。
-> 流式接口（SSE：讨论/聊天流/续写流）未做 MCP 工具，可经 CLI `call` 或前端使用。
+> 流式接口（SSE）已提供缓冲版 MCP 工具（`nh_inspiration_discussion` / `nh_chapter_mainline_discussion` / `nh_send_chat_message_stream` / `nh_continue_stream`），返回完整结果而非实时流；需要逐 token 展示时用前端或 CLI `call`。

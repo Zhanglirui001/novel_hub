@@ -22,6 +22,8 @@ from app.schemas import (
     DailyTodoUpdatePayload,
     MonthlyFixedTodoCreatePayload,
     MonthlyFixedTodoUpdatePayload,
+    OutlineNodeCreatePayload,
+    OutlineNodeUpdatePayload,
     DraftPayload,
     InspirationBoardCreatePayload,
     InspirationBoardUpdatePayload,
@@ -42,7 +44,7 @@ from app.schemas import (
     StorylineGraphPatchPayload,
     StyleProfilePayload,
 )
-from app.services import ChatService, ConsistencyGuard, GenerationService, InspirationService, LoreService, StyleService
+from app.services import ChatService, ConsistencyGuard, GenerationService, InspirationService, LoreService, OutlineService, StyleService
 from app.services.inspiration_service import GraphConflictError
 from app.services.storyline_service import StorylineService
 from app.services.checkin_service import CheckinService
@@ -74,6 +76,7 @@ storyline_service = StorylineService()
 checkin_service = CheckinService()
 writing_agent = WritingAgent()
 mainline_service = MainlineService()
+outline_service = OutlineService()
 
 
 def _checkin_error(exc: ValueError) -> HTTPException:
@@ -806,6 +809,35 @@ def apply_patch(payload: PatchApplyPayload):
 @app.get("/timeline")
 def timeline(project_id: int):
     return lore_service.list_timeline(project_id)
+
+
+@app.get("/projects/{project_id}/outline")
+def get_outline(project_id: int):
+    return outline_service.build_tree(project_id)
+
+
+@app.post("/projects/{project_id}/outline")
+def create_outline_node(project_id: int, payload: OutlineNodeCreatePayload):
+    try:
+        return outline_service.create_node(project_id, payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.patch("/outline/{node_id}")
+def update_outline_node(node_id: int, payload: OutlineNodeUpdatePayload):
+    try:
+        return outline_service.update_node(node_id, payload.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/outline/{node_id}")
+def delete_outline_node(node_id: int):
+    try:
+        return outline_service.delete_node(node_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/settings/llm")
