@@ -4,18 +4,21 @@
   python -m bridge status                 # 检查 MySQL/后端/前端可达性
   python -m bridge sync [--force]         # 推送工作区 → novel_hub（幂等）
   python -m bridge pull [--workspace DIR] # novel_hub 采纳后章节 → 工作区手稿/成品
+  python -m bridge assemble               # 汇编：章节 → 手稿/成品/完整书稿.md（+ .docx）
   python -m bridge projects               # 列出 novel_hub 中的项目
   python -m bridge call <METHOD> <PATH> [JSON_BODY]   # 通用调用任意 REST 端点
 
 示例：
   python -m bridge call GET "/projects"
   python -m bridge call POST "/projects/4/inspiration/boards" "{\"title\":\"新画板\"}"
+  python -m bridge assemble --project 尚未兑现的明天 --no-docx
 """
 from __future__ import annotations
 
 import argparse
 import json
 
+from . import assemble as assemble_mod
 from . import http, sync
 
 
@@ -32,6 +35,12 @@ def main(argv=None) -> None:
 
     sp_pull = sub.add_parser("pull", help="把 novel_hub 章节回流到工作区手稿/成品")
     sp_pull.add_argument("--workspace", default=None, help="工作区根目录（默认自动探测）")
+
+    sp_asm = sub.add_parser("assemble", help="汇编：把章节按卷/章合并成 手稿/成品/完整书稿.md")
+    sp_asm.add_argument("--workspace", default=None, help="工作区根目录（默认自动探测）")
+    sp_asm.add_argument("--project", default=None, help="只汇编指定项目（默认全部）")
+    sp_asm.add_argument("--no-docx", action="store_true", help="不导 Word，只出 Markdown")
+    sp_asm.add_argument("--include-staging", action="store_true", help="把「单元」草稿也一并收进书稿")
 
     sub.add_parser("status", help="检查 MySQL/后端/前端可达性")
     sub.add_parser("projects", help="列出 novel_hub 中的项目")
@@ -51,6 +60,15 @@ def main(argv=None) -> None:
         _print_json(sync.push(force=getattr(args, "force", False)))
     elif args.cmd == "pull":
         _print_json(sync.pull(getattr(args, "workspace", None)))
+    elif args.cmd == "assemble":
+        _print_json(
+            assemble_mod.assemble(
+                workspace_root=getattr(args, "workspace", None),
+                project_name=getattr(args, "project", None),
+                with_docx=not getattr(args, "no_docx", False),
+                include_staging=getattr(args, "include_staging", False),
+            )
+        )
     elif args.cmd == "call":
         payload = None
         if args.body:

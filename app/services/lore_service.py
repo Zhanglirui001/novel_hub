@@ -173,3 +173,53 @@ class LoreService:
                 (character_id, project_id),
             )
             return {"deleted": c.rowcount}
+
+    # ---- 更新（前端「设定卡片库」编辑用） ---------------------------------
+
+    def update_character(self, project_id: int, character_id: int, payload: dict) -> dict:
+        """更新角色卡的 name / profile，返回更新后的记录。"""
+        updates = {}
+        if payload.get("name") is not None:
+            updates["name"] = payload["name"]
+        if payload.get("profile") is not None:
+            updates["profile"] = payload["profile"]
+        if not updates:
+            raise ValueError("没有可更新的字段")
+        set_sql = ", ".join(f"{k} = %s" for k in updates)
+        values = list(updates.values()) + [character_id, project_id]
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute(f"UPDATE character_cards SET {set_sql} WHERE id = %s AND project_id = %s", values)
+            if c.rowcount == 0:
+                raise ValueError("角色卡不存在")
+            c.execute("SELECT id, name, profile FROM character_cards WHERE id = %s", (character_id,))
+            r = c.fetchone()
+        return dict(r)
+
+    def update_lore_item(self, project_id: int, item_id: int, payload: dict) -> dict:
+        """更新 lore_items 的 name / content / tags，返回更新后的记录。"""
+        updates = {}
+        if payload.get("name") is not None:
+            updates["name"] = payload["name"]
+        if payload.get("content") is not None:
+            updates["content"] = payload["content"]
+        if payload.get("tags") is not None:
+            updates["tags"] = json.dumps(payload["tags"], ensure_ascii=False)
+        if not updates:
+            raise ValueError("没有可更新的字段")
+        set_sql = ", ".join(f"{k} = %s" for k in updates)
+        values = list(updates.values()) + [item_id, project_id]
+        with get_conn() as conn:
+            c = conn.cursor()
+            c.execute(f"UPDATE lore_items SET {set_sql} WHERE id = %s AND project_id = %s", values)
+            if c.rowcount == 0:
+                raise ValueError("设定条目不存在")
+            c.execute("SELECT id, item_type, name, content, tags FROM lore_items WHERE id = %s", (item_id,))
+            r = c.fetchone()
+        return {
+            "id": r["id"],
+            "item_type": r["item_type"],
+            "name": r["name"],
+            "content": r["content"],
+            "tags": json.loads(r["tags"] or "[]"),
+        }

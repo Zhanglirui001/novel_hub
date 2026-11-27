@@ -331,6 +331,24 @@ export function useDeleteChapter(projectId: number) {
   });
 }
 
+export function useRenameVolume(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ oldTitle, newTitle }: { oldTitle: string; newTitle: string }) =>
+      api.renameVolume(projectId, oldTitle, newTitle),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["chapters", projectId] }),
+  });
+}
+
+export function useDeleteVolume(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ title, keepChapters }: { title: string; keepChapters: boolean }) =>
+      api.deleteVolume(projectId, title, keepChapters),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["chapters", projectId] }),
+  });
+}
+
 export function useBackupStatus(chapterId: number | null) {
   return useQuery({
     queryKey: ["backup-status", chapterId],

@@ -2,17 +2,18 @@
 
 把 novel_hub 的全部主要 REST 操作暴露为 MCP 工具，供 DSH 创作团队 agent 原生调用。
 覆盖：项目 / 章节 / 设定 / 主线 / 故事线图 / 灵感卡片与看板 / AI 生成与审查 / 补丁 /
-时间线 / 聊天 / 备份 / LLM 设置 / 文风 / 同步回流。复用 bridge/http.py + sync.py。
+时间线 / 聊天 / 备份 / LLM 设置 / 文风 / 同步回流 / 汇编成书。复用 bridge/http.py + sync.py + assemble.py。
 
 运行：<venv>/python -m bridge.mcp_server   （stdio）
 """
 from __future__ import annotations
 
 import json
+import urllib.parse
 
 from mcp.server.mcpserver import MCPServer
 
-from . import http, sync
+from . import assemble, http, sync
 
 mcp = MCPServer(
     "novel_hub",
@@ -64,8 +65,47 @@ def nh_sync(force: bool = False) -> str:
 
 @mcp.tool()
 def nh_pull() -> str:
-    """把 novel_hub 中的章节回流到工作区 手稿/成品/。"""
+    """把 novel_hub 中的章节回流到工作区 手稿/成品/（跳过 README/单元模板 等伪章节）。"""
     return _j(sync.pull())
+
+
+@mcp.tool()
+def nh_assemble(project_name: str | None = None, with_docx: bool = True, include_staging: bool = False) -> str:
+    """汇编：把章节按卷/章合并成 手稿/成品/完整书稿.md（可选 .docx）。project_name 省略则汇编全部项目。"""
+    return _j(assemble.assemble(project_name=project_name, with_docx=with_docx, include_staging=include_staging))
+
+
+@mcp.tool()
+def nh_delete_chapter(chapter_id: int) -> str:
+    """删除章节（含其主线/一致性记录/补丁引用）。"""
+    return _j(http.request("DELETE", f"/chapters/{chapter_id}"))
+
+
+@mcp.tool()
+def nh_list_chapter_revisions(chapter_id: int) -> str:
+    """列出章节的历史版本（每次覆盖保存前的快照，保留最近 20 版）。"""
+    return _j(http.get(f"/chapters/{chapter_id}/revisions"))
+
+
+@mcp.tool()
+def nh_rename_volume(project_id: int, old_title: str, new_title: str) -> str:
+    """整卷改名：把该卷下所有章节的分组名一起改掉。"""
+    return _j(http.request("PATCH", f"/projects/{project_id}/volumes", {
+        "old_title": old_title, "new_title": new_title,
+    }))
+
+
+@mcp.tool()
+def nh_delete_volume(project_id: int, title: str, keep_chapters: bool = True) -> str:
+    """删除整卷：keep_chapters=true 时章节移到「默认卷」，否则连章节一起删。"""
+    query = f"?title={urllib.parse.quote(title)}&keep_chapters={'true' if keep_chapters else 'false'}"
+    return _j(http.request("DELETE", f"/projects/{project_id}/volumes{query}"))
+
+
+@mcp.tool()
+def nh_get_chapter_revision(chapter_id: int, revision_id: int) -> str:
+    """读取某个历史版本的正文（用于误清空后恢复）。"""
+    return _j(http.get(f"/chapters/{chapter_id}/revisions/{revision_id}"))
 
 
 # ---- 章节 -------------------------------------------------------------------

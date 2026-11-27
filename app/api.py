@@ -11,6 +11,7 @@ from app.schemas import (
     ChapterPlacementPayload,
     ChapterRenamePayload,
     ChapterSavePayload,
+    VolumeRenamePayload,
     ChatMessageCreatePayload,
     ChatSessionCreatePayload,
     ConsistencyPayload,
@@ -36,6 +37,8 @@ from app.schemas import (
     InlineRevisePayload,
     LlmSettingsPayload,
     LoreImportPayload,
+    CharacterUpdatePayload,
+    LoreItemUpdatePayload,
     MainlineDiscussionPayload,
     MainlineSavePayload,
     GlobalMainlineSavePayload,
@@ -51,10 +54,10 @@ from app.services.checkin_service import CheckinService
 from app.services.writing_agent import WritingAgent
 from app.services.mainline_service import MainlineService
 from app.services import backup_service, settings_service
+from app.services import mirror_service
 
 init_db()
 app = FastAPI(title="Novel Hub API", version="0.1.0")
-
 # 允许本地 Next.js 前端跨域访问。可通过 CORS_ORIGINS 环境变量覆盖（逗号分隔）。
 _default_origins = "http://localhost:3001,http://127.0.0.1:3001"
 allow_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", _default_origins).split(",") if o.strip()]
@@ -337,6 +340,7 @@ def save_chapter(payload: ChapterSavePayload):
         raise HTTPException(status_code=400, detail="title 不能超过 255 个字符")
     if len(group_title) > 255:
         raise HTTPException(status_code=400, detail="group_title 不能超过 255 个字符")
+    previous: tuple[str, str] | None = None
     with get_conn() as conn:
         c = conn.cursor()
         target_id = payload.chapter_id
@@ -344,7 +348,7 @@ def save_chapter(payload: ChapterSavePayload):
         if target_id is None:
             c.execute(
                 """
-                SELECT id, version FROM chapters
+                SELECT id, title, group_title, version FROM chapters
                 WHERE project_id = %s AND group_title = %s AND title = %s
                 ORDER BY id DESC LIMIT 1
                 """,
@@ -354,6 +358,7 @@ def save_chapter(payload: ChapterSavePayload):
             if existing:
                 target_id = existing["id"]
                 version = existing["version"] + 1
+                previous = (existing["title"], existing["group_title"])
             else:
                 if sort_order is None:
                     c.execute(
@@ -368,15 +373,16 @@ def save_chapter(payload: ChapterSavePayload):
                     """,
                     (payload.project_id, title, group_title, payload.content, sort_order, 1, now),
                 )
-                return {
-                    "chapter_id": c.lastrowid,
+                new_id = c.lastrowid
+                result = {
+                    "chapter_id": new_id,
                     "version": 1,
                     "updated_at": now,
                     "created": True,
                 }
         else:
             c.execute(
-                "SELECT project_id, version, sort_order FROM chapters WHERE id = %s",
+                "SELECT project_id, title, group_title, content, version, sort_order FROM chapters WHERE id = %s",
                 (target_id,),
             )
             row = c.fetchone()
@@ -384,24 +390,53 @@ def save_chapter(payload: ChapterSavePayload):
                 raise HTTPException(status_code=404, detail=f"chapter_id={target_id} 不存在")
             if row["project_id"] != payload.project_id:
                 raise HTTPException(status_code=400, detail="chapter_id 不属于当前 project_id")
+            # 防误清空：旧正文有内容、新正文却是空白，且没有显式声明 allow_empty → 拒绝。
+            if (row["content"] or "").strip() and not (payload.content or "").strip() and not payload.allow_empty:
+                raise HTTPException(
+                    status_code=409,
+                    detail="新正文为空，已拒绝覆盖（如确实要清空这一章，请显式允许空稿）",
+                )
             version = row["version"] + 1
+            previous = (row["title"], row["group_title"])
             if sort_order is None:
                 sort_order = row["sort_order"]
+            # 覆盖前先把旧版本留档（只保留最近 20 版），误清空也能找回。
+            c.execute(
+                """
+                INSERT INTO chapter_revisions (chapter_id, project_id, title, group_title, content, version, saved_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (target_id, payload.project_id, row["title"], row["group_title"], row["content"], row["version"], now),
+            )
+            c.execute(
+                """
+                DELETE FROM chapter_revisions
+                WHERE chapter_id = %s AND id NOT IN (
+                    SELECT id FROM chapter_revisions WHERE chapter_id = %s ORDER BY id DESC LIMIT 20
+                )
+                """,
+                (target_id, target_id),
+            )
 
-        c.execute(
-            """
-            UPDATE chapters
-            SET title = %s, group_title = %s, content = %s, sort_order = %s, version = %s, updated_at = %s
-            WHERE id = %s
-            """,
-            (title, group_title, payload.content, sort_order, version, now, target_id),
-        )
-        return {
-            "chapter_id": target_id,
-            "version": version,
-            "updated_at": now,
-            "created": False,
-        }
+        if target_id is not None:
+            c.execute(
+                """
+                UPDATE chapters
+                SET title = %s, group_title = %s, content = %s, sort_order = %s, version = %s, updated_at = %s
+                WHERE id = %s
+                """,
+                (title, group_title, payload.content, sort_order, version, now, target_id),
+            )
+            result = {
+                "chapter_id": target_id,
+                "version": version,
+                "updated_at": now,
+                "created": False,
+            }
+
+    # 事务已提交，再把这一章镜像到工作区（失败只记日志，不影响保存结果）。
+    mirror_service.on_chapter_saved(payload.project_id, title, group_title, payload.content, previous)
+    return result
 
 
 @app.patch("/chapters/{chapter_id}/placement")
@@ -410,7 +445,7 @@ def move_chapter(chapter_id: int, payload: ChapterPlacementPayload):
     now = utc_now()
     with get_conn() as conn:
         c = conn.cursor()
-        c.execute("SELECT project_id, sort_order FROM chapters WHERE id = %s", (chapter_id,))
+        c.execute("SELECT project_id, title, group_title, content, sort_order FROM chapters WHERE id = %s", (chapter_id,))
         row = c.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail=f"chapter_id={chapter_id} 不存在")
@@ -425,6 +460,13 @@ def move_chapter(chapter_id: int, payload: ChapterPlacementPayload):
             "UPDATE chapters SET group_title = %s, sort_order = %s, updated_at = %s WHERE id = %s",
             (group_title, sort_order, now, chapter_id),
         )
+    mirror_service.on_chapter_saved(
+        row["project_id"],
+        row["title"],
+        group_title,
+        row["content"] or "",
+        (row["title"], row["group_title"]),
+    )
     return {
         "chapter_id": chapter_id,
         "group_title": group_title,
@@ -441,14 +483,163 @@ def rename_chapter(chapter_id: int, payload: ChapterRenamePayload):
     now = utc_now()
     with get_conn() as conn:
         c = conn.cursor()
-        c.execute("SELECT id FROM chapters WHERE id = %s", (chapter_id,))
-        if not c.fetchone():
+        c.execute("SELECT project_id, title, group_title, content FROM chapters WHERE id = %s", (chapter_id,))
+        row = c.fetchone()
+        if not row:
             raise HTTPException(status_code=404, detail=f"chapter_id={chapter_id} 不存在")
         c.execute(
             "UPDATE chapters SET title = %s, updated_at = %s WHERE id = %s",
             (title, now, chapter_id),
         )
+    mirror_service.on_chapter_saved(
+        row["project_id"], title, row["group_title"], row["content"] or "", (row["title"], row["group_title"])
+    )
     return {"chapter_id": chapter_id, "title": title, "updated_at": now}
+
+
+@app.get("/chapters/{chapter_id}/revisions")
+def list_chapter_revisions(chapter_id: int):
+    """列出该章保留的历史版本（不含正文，便于先看再取）。"""
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT id, version, title, group_title, length(content) AS chars, saved_at
+            FROM chapter_revisions WHERE chapter_id = %s ORDER BY id DESC
+            """,
+            (chapter_id,),
+        )
+        return list(c.fetchall())
+
+
+@app.get("/chapters/{chapter_id}/revisions/{revision_id}")
+def get_chapter_revision(chapter_id: int, revision_id: int):
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, chapter_id, version, title, group_title, content, saved_at FROM chapter_revisions WHERE id = %s AND chapter_id = %s",
+            (revision_id, chapter_id),
+        )
+        row = c.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail=f"revision_id={revision_id} 不存在")
+    return row
+
+
+@app.patch("/projects/{project_id}/volumes")
+def rename_volume(project_id: int, payload: VolumeRenamePayload):
+    """整卷改名（卷不是独立表，就是该卷所有章节的 group_title）。"""
+    old_title = payload.old_title.strip()
+    new_title = payload.new_title.strip() or "默认卷"
+    if not old_title:
+        raise HTTPException(status_code=400, detail="old_title 不能为空")
+    if len(new_title) > 255:
+        raise HTTPException(status_code=400, detail="卷名不能超过 255 个字符")
+    now = utc_now()
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, title, content FROM chapters WHERE project_id = %s AND group_title = %s ORDER BY sort_order ASC, id ASC",
+            (project_id, old_title),
+        )
+        rows = list(c.fetchall())
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"卷「{old_title}」下没有章节")
+        if old_title != new_title:
+            c.execute(
+                "UPDATE chapters SET group_title = %s, updated_at = %s WHERE project_id = %s AND group_title = %s",
+                (new_title, now, project_id, old_title),
+            )
+    if old_title != new_title:
+        mirror_service.on_volume_renamed(
+            project_id, [(r["title"], old_title, new_title, r["content"] or "") for r in rows]
+        )
+    return {"project_id": project_id, "group_title": new_title, "updated": len(rows)}
+
+
+@app.delete("/projects/{project_id}/volumes")
+def delete_volume(project_id: int, title: str, keep_chapters: bool = False):
+    """删除整卷。
+
+    keep_chapters=true：章节保留，整体挪进「默认卷」；
+    否则章节一并删除（正文仍可从历史版本取回）。
+    """
+    group_title = title.strip()
+    if not group_title:
+        raise HTTPException(status_code=400, detail="title 不能为空")
+    now = utc_now()
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, title, content FROM chapters WHERE project_id = %s AND group_title = %s ORDER BY sort_order ASC, id ASC",
+            (project_id, group_title),
+        )
+        rows = list(c.fetchall())
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"卷「{group_title}」下没有章节")
+
+        if keep_chapters:
+            target = "默认卷" if group_title != "默认卷" else "未分卷"
+            c.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM chapters WHERE project_id = %s AND group_title = %s",
+                (project_id, target),
+            )
+            start = c.fetchone()["next_order"]
+            for offset, r in enumerate(rows):
+                c.execute(
+                    "UPDATE chapters SET group_title = %s, sort_order = %s, updated_at = %s WHERE id = %s",
+                    (target, start + offset, now, r["id"]),
+                )
+            result = {"moved": len(rows), "deleted": 0, "group_title": target}
+        else:
+            for r in rows:
+                c.execute("DELETE FROM chapter_mainlines WHERE chapter_id = %s", (r["id"],))
+                c.execute("DELETE FROM consistency_issues WHERE chapter_id = %s", (r["id"],))
+                c.execute("UPDATE patch_sets SET chapter_id = NULL WHERE chapter_id = %s", (r["id"],))
+                c.execute("UPDATE model_run_logs SET chapter_id = NULL WHERE chapter_id = %s", (r["id"],))
+                c.execute("DELETE FROM chapters WHERE id = %s", (r["id"],))
+            result = {"moved": 0, "deleted": len(rows), "group_title": group_title}
+
+    if keep_chapters:
+        mirror_service.on_volume_renamed(
+            project_id,
+            [(r["title"], group_title, result["group_title"], r["content"] or "") for r in rows],
+        )
+    else:
+        mirror_service.on_volume_deleted(project_id, [(r["title"], group_title) for r in rows])
+    return {"project_id": project_id, **result}
+
+
+@app.delete("/chapters/{chapter_id}")
+def delete_chapter(chapter_id: int):
+    """删除章节并清理其下属数据（主线、一致性记录、补丁集引用）。
+
+    章节栏的删除按钮前端早就调了 DELETE /chapters/{id}，但后端一直没这条路由，
+    浏览器收到 405、UI 乐观删除后又回滚——表现为「删了又回来了」。
+    """
+    with get_conn() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, project_id, title, group_title FROM chapters WHERE id = %s", (chapter_id,))
+        row = c.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"chapter_id={chapter_id} 不存在")
+
+        c.execute("DELETE FROM chapter_mainlines WHERE chapter_id = %s", (chapter_id,))
+        c.execute("DELETE FROM consistency_issues WHERE chapter_id = %s", (chapter_id,))
+        c.execute("UPDATE patch_sets SET chapter_id = NULL WHERE chapter_id = %s", (chapter_id,))
+        c.execute("UPDATE model_run_logs SET chapter_id = NULL WHERE chapter_id = %s", (chapter_id,))
+        c.execute("DELETE FROM chapters WHERE id = %s", (chapter_id,))
+
+        # 同卷内的 sort_order 重新紧凑排列，避免删除后出现空档。
+        c.execute(
+            "SELECT id FROM chapters WHERE project_id = %s AND group_title = %s ORDER BY sort_order ASC, id ASC",
+            (row["project_id"], row["group_title"]),
+        )
+        for order, r in enumerate(c.fetchall()):
+            c.execute("UPDATE chapters SET sort_order = %s WHERE id = %s", (order, r["id"]))
+
+    mirror_service.on_chapter_removed(row["project_id"], row["title"], row["group_title"])
+    return {"chapter_id": chapter_id, "deleted": True}
 
 
 @app.get("/projects/{project_id}/daily-checkin")
@@ -650,6 +841,22 @@ def delete_lore_item(project_id: int, item_id: int):
 @app.delete("/projects/{project_id}/characters/{character_id}")
 def delete_character(project_id: int, character_id: int):
     return lore_service.delete_character(project_id, character_id)
+
+
+@app.patch("/projects/{project_id}/characters/{character_id}")
+def update_character(project_id: int, character_id: int, payload: CharacterUpdatePayload):
+    try:
+        return lore_service.update_character(project_id, character_id, payload.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.patch("/projects/{project_id}/lore/items/{item_id}")
+def update_lore_item(project_id: int, item_id: int, payload: LoreItemUpdatePayload):
+    try:
+        return lore_service.update_lore_item(project_id, item_id, payload.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/style/profile")

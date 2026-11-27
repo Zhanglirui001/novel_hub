@@ -10,6 +10,27 @@ export interface Project {
   created_at: string;
 }
 
+export interface LoreCharacter {
+  id: number;
+  name: string;
+  profile: string;
+}
+
+export interface LoreItem {
+  id: number;
+  name: string;
+  content: string;
+  tags: string[];
+}
+
+export interface LoreContext {
+  characters: LoreCharacter[];
+  world_rules: LoreItem[];
+  terms: LoreItem[];
+  taboos: LoreItem[];
+  timeline: unknown[];
+}
+
 export interface OutlineNode {
   id: number;
   parent_id: number | null;
@@ -325,6 +346,8 @@ export interface ChapterSaveRequest {
   group_title?: string;
   sort_order?: number | null;
   chapter_id?: number | null;
+  /** 正文为空时，后端默认拒绝覆盖已有正文；确属清空操作才置 true。 */
+  allow_empty?: boolean;
 }
 
 export interface ChapterSaveResponse {

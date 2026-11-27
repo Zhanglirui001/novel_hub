@@ -181,6 +181,24 @@ def init_db() -> None:
             """
         )
         c.execute("CREATE INDEX IF NOT EXISTS idx_chapters_project_title ON chapters(project_id, title)")
+        # 章节历史版本：每次覆盖保存前把「被覆盖的那一版」留一份，避免误保存/误清空再也找不回。
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chapter_revisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chapter_id INTEGER NOT NULL,
+                project_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                group_title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                saved_at TEXT NOT NULL
+            )
+            """
+        )
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chapter_revisions_chapter ON chapter_revisions(chapter_id, id)"
+        )
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS lore_items (

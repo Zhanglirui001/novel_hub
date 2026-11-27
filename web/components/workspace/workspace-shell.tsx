@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Activity, ChevronLeft, ListTree, Network, PanelLeft } from "lucide-react";
+import { Activity, BookOpen, ChevronLeft, Library, ListTree, Network, PanelLeft } from "lucide-react";
 
 import { ThemePicker } from "@/components/theme-picker";
 import { Button } from "@/components/ui/button";
@@ -121,9 +121,31 @@ export function WorkspaceShell() {
             className="h-8 gap-1.5"
             asChild
           >
+            <Link href="/guide" aria-label="打开快速上手">
+              <BookOpen className="size-3.5" />
+              <span>指南</span>
+            </Link>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5"
+            asChild
+          >
             <Link href="/radar" aria-label="打开实时雷达">
               <Activity className="size-3.5" />
               <span>雷达</span>
+            </Link>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5"
+            asChild
+          >
+            <Link href={`/projects/${projectId}/lore`} aria-label="打开设定卡片库">
+              <Library className="size-3.5" />
+              <span>设定</span>
             </Link>
           </Button>
           <Button

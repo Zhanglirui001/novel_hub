@@ -17,6 +17,17 @@ from pathlib import Path
 _NOTE_RE = re.compile(r"^#{1,6}\s*([灵人地线段金疑])·\s*(.+?)\s*$")
 _TAG_RE = re.compile(r"#([\w\u4e00-\u9fff\-]+)")
 
+# 这些是模板 / 说明书 / 汇编产物，不是正文章节：既不该被 push 成章节，
+# 也不该被 pull 写成文件。（历史上 README、单元模板 就是这么被当成「章节」
+# 塞进库里的，后来又会跟着汇编混进书稿。）
+PSEUDO_TITLES = {"readme", "单元模板", "章节编排表", "完整书稿"}
+# 草稿暂存区：pull 不往 成品/ 里搬。
+STAGING_GROUPS = {"单元"}
+
+
+def _is_pseudo_title(title: str) -> bool:
+    return (title or "").strip().lower() in PSEUDO_TITLES
+
 
 def _read(path: Path) -> str:
     if not path.exists():
@@ -107,10 +118,18 @@ def parse_chapters(project_dir: Path) -> list[dict]:
         return []
     chapters: list[dict] = []
     for path in sorted(draft.rglob("*.md")):
-        if path.name == "章节编排表.md":
+        if _is_pseudo_title(path.stem):
             continue
         rel = path.relative_to(draft)
-        group = rel.parts[0] if len(rel.parts) > 1 else "默认卷"
+        parts = rel.parts
+        if len(parts) > 2 and parts[0] in {"成品", "单元"}:
+            # pull 会写成 成品/<卷>/<章>.md；回读时跳过「成品」这一层，
+            # 否则 group 会退化成「成品」，重新 push 时同一章会以新分组再存一份。
+            group = parts[1]
+        elif len(parts) > 1:
+            group = parts[0]
+        else:
+            group = "默认卷"
         chapters.append({
             "title": path.stem,
             "group_title": group,
@@ -159,13 +178,32 @@ def project_description(project_dir: Path) -> str:
 
 
 def write_chapters_back(project_dir: Path, chapters: list[dict]) -> list[Path]:
+    """把 novel_hub 章节回写成 Markdown。
+
+    以前是「一股脑平铺进 成品/」：README、单元模板 这类模板条目也会变成文件，
+    而且卷/分组信息直接丢掉。现在：
+      - 跳过伪章节（README / 单元模板 / 章节编排表 / 完整书稿）
+      - 跳过「单元」草稿区（那是写作暂存，不是成品）
+      - 有卷名的写进 成品/<卷名>/<章节>.md，默认卷才平铺
+    """
     out_dir = project_dir / "手稿" / "成品"
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for ch in chapters:
         title = ch.get("title") or "未命名章节"
+        if _is_pseudo_title(title):
+            continue
+        group = (ch.get("group_title") or "").strip()
+        if group in STAGING_GROUPS:
+            continue
         safe = re.sub(r'[\\/:*?"<>|]', "_", title)
-        target = out_dir / f"{safe}.md"
+        if group and group != "默认卷":
+            safe_group = re.sub(r'[\\/:*?"<>|]', "_", group)
+            target_dir = out_dir / safe_group
+        else:
+            target_dir = out_dir
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = target_dir / f"{safe}.md"
         target.write_text(ch.get("content", ""), encoding="utf-8")
         written.append(target)
     return written

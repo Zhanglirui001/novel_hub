@@ -48,6 +48,17 @@ class LoreImportPayload(BaseModel):
     timeline_events: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class CharacterUpdatePayload(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+    profile: str | None = None
+
+
+class LoreItemUpdatePayload(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+    content: str | None = None
+    tags: list[str] | None = None
+
+
 class StyleProfilePayload(BaseModel):
     project_id: int
     name: str = "default"
@@ -99,6 +110,9 @@ class ChapterSavePayload(BaseModel):
     sort_order: int | None = None
     # 传入即更新该章节，否则按 (project_id, group_title, title) 查找；找不到则插入新章。
     chapter_id: int | None = None
+    # 允许用空正文覆盖已有正文。默认 false：防止陈旧页面/误操作把整章清空
+    # （历史上真的发生过：编辑器状态没加载回来，自动保存把 800 字覆盖成一个换行）。
+    allow_empty: bool = False
 
 
 class ChapterPlacementPayload(BaseModel):
@@ -108,6 +122,13 @@ class ChapterPlacementPayload(BaseModel):
 
 class ChapterRenamePayload(BaseModel):
     title: str
+
+
+class VolumeRenamePayload(BaseModel):
+    """整卷改名：把该卷下所有章节的 group_title 一起改掉。"""
+
+    old_title: str
+    new_title: str
 
 
 class ConsistencyPayload(BaseModel):

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { BookOpen, Clock, FileEdit, Sparkles, type LucideIcon } from "lucide-react";
 
 import { useTimeline } from "@/lib/queries";
@@ -43,9 +44,17 @@ const DEFAULT_STYLE: SourceStyle = {
   badge: "bg-muted text-muted-foreground",
 };
 
+const FILTERS = [
+  { value: "all", label: "全部" },
+  { value: "continue_accept", label: "续写落笔" },
+  { value: "patch_apply", label: "章节更新" },
+  { value: "lore_import", label: "设定导入" },
+];
+
 export function TimelinePanel() {
   const { projectId } = useWorkspace();
   const { data: events, isLoading } = useTimeline(projectId);
+  const [filter, setFilter] = useState("all");
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground">加载中…</p>;
@@ -62,41 +71,70 @@ export function TimelinePanel() {
     );
   }
 
+  const shown = filter === "all" ? events : events.filter((ev) => ev.source === filter);
+
   return (
-    <ol className="relative space-y-5 border-l pl-6">
-      {events.map((ev, i) => {
-        const style = SOURCE_STYLES[ev.source] ?? DEFAULT_STYLE;
-        const Icon = style.icon;
-        return (
-          <li key={i} className="relative animate-fade-in">
-            <span
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-1.5">
+        {FILTERS.map((f) => {
+          const count = f.value === "all" ? events.length : events.filter((ev) => ev.source === f.value).length;
+          return (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => setFilter(f.value)}
               className={cn(
-                "absolute -left-[1.72rem] top-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-background",
-                style.dot,
+                "rounded-full border px-2.5 py-1 text-xs transition",
+                filter === f.value
+                  ? "border-primary bg-primary/10 font-medium text-primary"
+                  : "text-muted-foreground hover:border-primary/40 hover:text-foreground",
               )}
             >
-              <Icon className="h-2.5 w-2.5 text-white" strokeWidth={2.5} />
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium">{ev.label}</span>
-              <span
-                className={cn(
-                  "rounded px-1.5 py-0.5 text-[0.65rem] font-medium",
-                  style.badge,
+              {f.label}
+              <span className="ml-1 text-[10px] opacity-60">{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {shown.length === 0 ? (
+        <p className="rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground">
+          该类型暂无事件
+        </p>
+      ) : (
+        <ol className="relative space-y-5 border-l pl-6">
+          {shown.map((ev, i) => {
+            const style = SOURCE_STYLES[ev.source] ?? DEFAULT_STYLE;
+            const Icon = style.icon;
+            return (
+              <li key={`${ev.event_time}-${i}`} className="relative animate-fade-in">
+                <span
+                  className={cn(
+                    "absolute -left-[1.72rem] top-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-background",
+                    style.dot,
+                  )}
+                >
+                  <Icon className="h-2.5 w-2.5 text-white" strokeWidth={2.5} />
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">{ev.label}</span>
+                  <span
+                    className={cn("rounded px-1.5 py-0.5 text-[0.65rem] font-medium", style.badge)}
+                  >
+                    {style.label}
+                  </span>
+                </div>
+                {ev.description && (
+                  <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
+                    {ev.description}
+                  </p>
                 )}
-              >
-                {style.label}
-              </span>
-            </div>
-            {ev.description && (
-              <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-                {ev.description}
-              </p>
-            )}
-            <p className="mt-0.5 text-xs text-muted-foreground/70">{formatDate(ev.event_time)}</p>
-          </li>
-        );
-      })}
-    </ol>
+                <p className="mt-0.5 text-xs text-muted-foreground/70">{formatDate(ev.event_time)}</p>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </div>
   );
 }

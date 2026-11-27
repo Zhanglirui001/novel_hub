@@ -31,6 +31,8 @@ import {
   LoreImportRequest,
   LoreImportResponse,
   LoreContext,
+  LoreCharacter,
+  LoreItem,
   PatchApplyResponse,
   TimelineEvent,
   Project,
@@ -182,6 +184,21 @@ export const api = {
     return request<{ chapter_id: number; deleted: boolean }>(`/chapters/${chapterId}`, {
       method: 'DELETE',
     });
+  },
+  renameVolume(projectId: number, oldTitle: string, newTitle: string) {
+    return request<{ project_id: number; group_title: string; updated: number }>(
+      `/projects/${projectId}/volumes`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ old_title: oldTitle, new_title: newTitle }),
+      },
+    );
+  },
+  deleteVolume(projectId: number, title: string, keepChapters: boolean) {
+    return request<{ project_id: number; moved: number; deleted: number; group_title: string }>(
+      `/projects/${projectId}/volumes?title=${encodeURIComponent(title)}&keep_chapters=${keepChapters}`,
+      { method: 'DELETE' },
+    );
   },
   getBackupStatus(chapterId: number) {
     return request<BackupInfo>(`/chapters/${chapterId}/backup`);
@@ -604,6 +621,44 @@ export const api = {
     } finally {
       reader.releaseLock();
     }
+  },
+
+  getLore(projectId: number) {
+    return request<LoreContext>(`/lore?project_id=${projectId}`);
+  },
+  createCharacter(projectId: number, payload: { name: string; profile: string }) {
+    return request<{ imported_count: number }>('/lore/import', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId, characters: [payload] }),
+    });
+  },
+  updateCharacter(projectId: number, characterId: number, payload: { name?: string; profile?: string }) {
+    return request<LoreCharacter>(`/projects/${projectId}/characters/${characterId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteCharacter(projectId: number, characterId: number) {
+    return request<{ deleted: number }>(`/projects/${projectId}/characters/${characterId}`, {
+      method: 'DELETE',
+    });
+  },
+  createLoreItem(projectId: number, payload: { name: string; content: string; tags?: string[] }) {
+    return request<{ imported_count: number }>('/lore/import', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId, world_rules: [payload] }),
+    });
+  },
+  updateLoreItem(projectId: number, itemId: number, payload: { name?: string; content?: string; tags?: string[] }) {
+    return request<LoreItem>(`/projects/${projectId}/lore/items/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteLoreItem(projectId: number, itemId: number) {
+    return request<{ deleted: number }>(`/projects/${projectId}/lore/items/${itemId}`, {
+      method: 'DELETE',
+    });
   },
 
   listOutline(projectId: number) {

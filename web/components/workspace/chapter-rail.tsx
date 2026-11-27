@@ -12,8 +12,10 @@ import { api } from "@/lib/api";
 import {
   useChapters,
   useDeleteChapter,
+  useDeleteVolume,
   useMoveChapter,
   useRenameChapter,
+  useRenameVolume,
 } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import type { ChapterSummary } from "@/lib/types";
@@ -47,17 +49,31 @@ export function ChapterRail() {
     activeChapterId,
     chapterGroupTitle,
     loadChapter,
+    saveStatus,
+    saveNow,
   } = useWorkspace();
   const { data: chapters, isLoading } = useChapters(projectId);
   const queryClient = useQueryClient();
   const renameChapter = useRenameChapter(projectId);
   const moveChapter = useMoveChapter(projectId);
   const deleteChapter = useDeleteChapter(projectId);
-  const { prompt, confirm, dialogs } = usePrompt();
+  const renameVolume = useRenameVolume(projectId);
+  const deleteVolume = useDeleteVolume(projectId);
+  const { prompt, confirm, choose, dialogs } = usePrompt();
   const groups = groupChapters(chapters);
+
+  // 切章 / 重命名 / 移动前，先把未保存的正文落库。
+  // loadChapter 会用服务器版本覆盖编辑器，不先 flush 就等于静默丢弃用户刚写的东西
+  // ——这正是「编辑完一看又还原了」的另一半原因。
+  async function flushPendingEdits() {
+    if (saveStatus === "dirty" || saveStatus === "error") {
+      await saveNow();
+    }
+  }
 
   async function openChapter(id: number) {
     try {
+      await flushPendingEdits();
       const ch = await api.getChapter(id);
       loadChapter(ch.id, ch.title, ch.content, ch.group_title);
     } catch {
@@ -149,6 +165,7 @@ export function ChapterRail() {
       // 当前打开的就是这章,把编辑器标题也同步上(loadChapter 会触发 dirty,
       // 这里只走表层 setState 比较安全:重新加载这一章的最新内容即可)。
       if (activeChapterId === ch.id) {
+        await flushPendingEdits();
         const fresh = await api.getChapter(ch.id);
         loadChapter(fresh.id, fresh.title, fresh.content, fresh.group_title);
       }
@@ -182,6 +199,7 @@ export function ChapterRail() {
     try {
       await moveChapter.mutateAsync({ chapterId: ch.id, groupTitle, sortOrder });
       if (activeChapterId === ch.id) {
+        await flushPendingEdits();
         const fresh = await api.getChapter(ch.id);
         loadChapter(fresh.id, fresh.title, fresh.content, fresh.group_title);
       }
@@ -213,6 +231,62 @@ export function ChapterRail() {
     }
   }
 
+  async function reloadIfActiveInGroup(groupTitle: string) {
+    if (activeChapterId === null) return;
+    const active = (chapters ?? []).find((c) => c.id === activeChapterId);
+    if (!active || normalizeGroupTitle(active.group_title) !== groupTitle) return;
+    try {
+      const fresh = await api.getChapter(activeChapterId);
+      loadChapter(fresh.id, fresh.title, fresh.content, fresh.group_title);
+    } catch {
+      /* 页面下次刷新会自然同步 */
+    }
+  }
+
+  async function handleRenameVolume(groupTitle: string) {
+    const next = await prompt("重命名卷", groupTitle);
+    if (next === null) return;
+    const title = next.trim();
+    if (!title || title === groupTitle) return;
+    try {
+      await flushPendingEdits();
+      const res = await renameVolume.mutateAsync({ oldTitle: groupTitle, newTitle: title });
+      await reloadIfActiveInGroup(groupTitle);
+      toast.success(`卷已改名，${res.updated} 章一并更新`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "卷改名失败");
+    }
+  }
+
+  async function handleDeleteVolume(groupTitle: string, count: number) {
+    const action = await choose(
+      `删除卷「${groupTitle}」`,
+      [
+        { label: `只删这个卷，${count} 章移到「默认卷」`, value: "keep" },
+        { label: `连同 ${count} 章一起删除（正文可从历史版本取回）`, value: "purge", danger: true },
+      ],
+      "卷本身不是独立记录，它就是这一组章节的分组名。",
+    );
+    if (!action) return;
+    const keepChapters = action === "keep";
+    try {
+      await flushPendingEdits();
+      const res = await deleteVolume.mutateAsync({ title: groupTitle, keepChapters });
+      if (keepChapters) {
+        await reloadIfActiveInGroup(groupTitle);
+        toast.success(`${res.moved} 章已移入「${res.group_title}」`);
+      } else {
+        const active = (chapters ?? []).find((c) => c.id === activeChapterId);
+        if (active && normalizeGroupTitle(active.group_title) === groupTitle) {
+          loadChapter(null, "第1章", "", preferredGroupTitle());
+        }
+        toast.success(`已删除 ${res.deleted} 章`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "删除卷失败");
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b p-4">
@@ -241,20 +315,40 @@ export function ChapterRail() {
             </p>
           ) : (
             groups.map((group) => (
-              <section key={group.title} className="space-y-0">
+              <section key={group.title} className="group/vol space-y-0">
                 <div className="flex items-center justify-between px-2 py-0">
-                  <span className="truncate text-xs font-medium text-muted-foreground">
+                  <span className="min-w-0 truncate text-xs font-medium text-muted-foreground">
                     {group.title}
                   </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-4 w-4 text-muted-foreground"
-                    onClick={() => newChapter(group.title)}
-                    title="在本卷新增章节"
-                  >
-                    <FilePlus className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/vol:opacity-100 focus-within:opacity-100">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-4 w-4 text-muted-foreground"
+                      onClick={() => newChapter(group.title)}
+                      title="在本卷新增章节"
+                    >
+                      <FilePlus className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-4 w-4 text-muted-foreground"
+                      onClick={() => handleRenameVolume(group.title)}
+                      title="重命名卷"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-4 w-4 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleDeleteVolume(group.title, group.chapters.length)}
+                      title="删除卷"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
                 {group.chapters.map((ch) => (
                   <ChapterRow

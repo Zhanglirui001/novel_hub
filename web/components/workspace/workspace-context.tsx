@@ -91,6 +91,8 @@ interface WorkspaceState {
   setLastResult: (r: GenerationResult | null) => void;
   dockTab: string;
   setDockTab: (t: string) => void;
+  createMode: "generate" | "revise" | "patch";
+  setCreateMode: (m: "generate" | "revise" | "patch") => void;
   selection: EditorSelection | null;
   setSelection: (s: EditorSelection | null) => void;
   reviseTarget: ReviseTarget | null;
@@ -188,6 +190,7 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
   const [activeChapterId, setActiveChapterId] = React.useState<number | null>(null);
   const [lastResult, setLastResult] = React.useState<GenerationResult | null>(null);
   const [dockTab, setDockTab] = React.useState("create");
+  const [createMode, setCreateMode] = React.useState<"generate" | "revise" | "patch">("generate");
   const [saveStatus, setSaveStatus] = React.useState<SaveStatus>("idle");
   const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(null);
   const [autosaveEnabled, setAutosaveEnabled] = React.useState(true);
@@ -258,7 +261,12 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
   const titleRef = React.useRef(chapterTitle);
   const groupTitleRef = React.useRef(chapterGroupTitle);
   const chapterIdRef = React.useRef<number | null>(activeChapterId);
-  const skipDirtyRef = React.useRef(false);
+  // 上一次「与服务器一致」的基线快照。用它判断是否有未保存改动，
+  // 替代原来的一次性 skipDirty 布尔——那个标志在 loadChapter 的 setState
+  // 全是 no-op 时（重复点击当前章节）不会被 effect 消费，会残留成 true，
+  // 把紧接着的第一次真实编辑吞掉，导致状态一直显示「已保存」、保存按钮灰着、
+  // 自动保存也不触发，用户切回章节时文本自然「还原」。
+  const baselineRef = React.useRef({ draft: "", title: chapterTitle, group: chapterGroupTitle });
   React.useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
@@ -346,10 +354,12 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
   }, []);
 
   const loadChapter = React.useCallback((id: number | null, title: string, content: string, groupTitle = DEFAULT_GROUP_TITLE) => {
-    skipDirtyRef.current = true;
+    const safeGroup = groupTitle.trim() || DEFAULT_GROUP_TITLE;
+    // 先立基线，再灌状态：两者对齐后 dirty 判定就是纯比较，不依赖 effect 时序。
+    baselineRef.current = { draft: content, title, group: safeGroup };
     setActiveChapterId(id);
     setChapterTitle(title);
-    setChapterGroupTitle(groupTitle.trim() || DEFAULT_GROUP_TITLE);
+    setChapterGroupTitle(safeGroup);
     setDraft(content);
     setLastResult(null);
     setSelection(null);
@@ -485,15 +495,19 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
   }, [activeChatSessionId, clearChatSessionMutation]);
 
   const saveNow = React.useCallback(async () => {
-    const title = titleRef.current.trim() || "未命名章节";
-    const groupTitle = groupTitleRef.current.trim() || DEFAULT_GROUP_TITLE;
+    const rawTitle = titleRef.current;
+    const rawGroup = groupTitleRef.current;
+    const title = rawTitle.trim() || "未命名章节";
+    const groupTitle = rawGroup.trim() || DEFAULT_GROUP_TITLE;
     const content = draftRef.current;
     if (title.length > MAX_CHAPTER_TITLE_LENGTH || groupTitle.length > MAX_CHAPTER_TITLE_LENGTH) {
       setSaveStatus("error");
       toast.error("章节标题或分组名称不能超过 255 个字符");
       return;
     }
-    if (!content.trim()) return;
+    // 还没有 chapter_id 且正文为空：不落空章（新建章的初始态）。
+    // 但已有章节允许保存空正文——否则「把正文全删掉」这一步永远存不进去。
+    if (chapterIdRef.current === null && !content.trim()) return;
     setSaveStatus("saving");
     try {
       const res = await saveChapter.mutateAsync({
@@ -502,11 +516,21 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
         content,
         group_title: groupTitle,
         chapter_id: chapterIdRef.current,
+        // 只有「用户真的把正文清空了」才允许空稿覆盖；否则后端会拒绝，
+        // 防止陈旧页面把整章莫名清掉。
+        allow_empty: !content.trim(),
       });
       chapterIdRef.current = res.chapter_id;
       setActiveChapterId(res.chapter_id);
       setLastSavedAt(res.updated_at);
-      setSaveStatus("saved");
+      // 基线推进到「刚提交出去的那一版」（用原始状态值，和 dirty 判定同口径）。
+      baselineRef.current = { draft: content, title: rawTitle, group: groupTitle };
+      // 保存请求在途时用户可能又改了：那就不算已保存，保持 dirty 让自动保存再跑一轮。
+      const stillDirty =
+        draftRef.current !== content ||
+        titleRef.current !== rawTitle ||
+        (groupTitleRef.current.trim() || DEFAULT_GROUP_TITLE) !== groupTitle;
+      setSaveStatus(stillDirty ? "dirty" : "saved");
     } catch (err) {
       setSaveStatus("error");
       toast.error(err instanceof Error ? err.message : "保存失败");
@@ -704,11 +728,18 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
   }, [cancelGhost, replaceRange, saveNow, projectId, queryClient]);
 
   React.useEffect(() => {
-    if (skipDirtyRef.current) {
-      skipDirtyRef.current = false;
-      return;
-    }
-    setSaveStatus((prev) => (prev === "saving" ? prev : "dirty"));
+    const base = baselineRef.current;
+    const changed =
+      draft !== base.draft ||
+      chapterTitle !== base.title ||
+      chapterGroupTitle !== base.group;
+    setSaveStatus((prev) => {
+      // 保存中不要打断状态机，等 saveNow 收尾时按快照重新判定。
+      if (prev === "saving") return prev;
+      if (changed) return "dirty";
+      // 改回了基线（撤销 / 删掉后复原）：状态回落，避免永远挂着「未保存修改」。
+      return prev === "dirty" ? "saved" : prev;
+    });
   }, [draft, chapterTitle, chapterGroupTitle]);
 
   React.useEffect(() => {
@@ -756,6 +787,8 @@ export function WorkspaceProvider({ projectId, children }: { projectId: number; 
     setLastResult,
     dockTab,
     setDockTab,
+    createMode,
+    setCreateMode,
     selection,
     setSelection,
     reviseTarget,

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Sparkles } from "lucide-react";
+import { FileText, Sparkles, TextQuote } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +23,7 @@ const cadenceLabels: Record<string, string> = {
 };
 
 export function StylePanel() {
-  const { projectId } = useWorkspace();
+  const { projectId, draft, selection } = useWorkspace();
   const { data: profile } = useStyleProfile(projectId);
   const build = useBuildStyleProfile(projectId);
   const [samples, setSamples] = React.useState("");
@@ -55,18 +55,17 @@ export function StylePanel() {
           <Stat label="视角" value={povLabels[profile.pov] ?? profile.pov} />
           <Stat label="节奏" value={cadenceLabels[profile.cadence] ?? profile.cadence} />
           {!!profile.accepted_count && profile.accepted_count > 0 && (
-            <Stat
-              label="采纳样本"
-              value={`${profile.accepted_count} 段`}
-              accent
-            />
+            <Stat label="采纳样本" value={`${profile.accepted_count} 段`} accent />
           )}
         </div>
       )}
 
       <div className="flex items-start gap-2 rounded-lg bg-primary/5 px-3 py-2 text-xs text-foreground/75">
         <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-        <p>文风画像会从你<span className="font-medium text-primary">采纳的续写</span>中持续学习——手输样本作为锚点，采纳文本注入近期语感。</p>
+        <p>
+          文风画像会从你<span className="font-medium text-primary">采纳的续写</span>
+          中持续学习——手输样本作为锚点，采纳文本注入近期语感。
+        </p>
       </div>
 
       {profile && profile.top_words.length > 0 && (
@@ -85,8 +84,36 @@ export function StylePanel() {
       )}
 
       <div className="space-y-2 border-t pt-4">
-        <Label className="text-xs">
-          输入作者历史文本（用 <code className="rounded bg-muted px-1">---</code> 单独成行分隔多段）
+        <Label className="text-xs">样本来源</Label>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSamples(draft);
+              toast.success("已填入当前正文");
+            }}
+            disabled={!draft.trim()}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            用当前正文
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSamples(selection?.text ?? "");
+              toast.success("已填入选中文字");
+            }}
+            disabled={!selection?.text}
+          >
+            <TextQuote className="h-3.5 w-3.5" />
+            用选中文字
+          </Button>
+        </div>
+
+        <Label className="pt-1 text-xs">
+          手动输入作者历史文本（用 <code className="rounded bg-muted px-1">---</code> 单独成行分隔多段）
         </Label>
         <Textarea
           value={samples}
