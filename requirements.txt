@@ -1,6 +1,8 @@
-fastapi>=0.115.0
+﻿fastapi>=0.115.0
 uvicorn>=0.30.0
 pydantic>=2.8.0
 langgraph>=0.2.0
+# MCP stdio 服务端（bridge/mcp_server.py，DSH 的 novelhub-mcp bundle 要用；需 2.x）
+mcp>=2,<3
 # 仅一次性数据迁移脚本 migrate_mysql_to_sqlite.py 需要（运行时已改用 SQLite）
 PyMySQL>=1.1.1

@@ -125,8 +125,10 @@ python -m uvicorn app.api:app --reload --port 8000
 ```powershell
 cd web
 npm install
-npm run dev
+npm run dev -- --webpack
 ```
+
+> Next 16 默认用 Turbopack，离线/受限网络下 `next/font` 会让首页 500，故用 `--webpack`（`scripts\start_novel_hub.ps1` 已内置）。
 
 默认访问 `http://localhost:3001`。前端默认请求 `http://localhost:8000`，可在 `web/.env.local` 中通过 `NEXT_PUBLIC_API_BASE` 覆盖。
 
